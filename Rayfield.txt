@@ -2162,10 +2162,26 @@ function RayfieldLibrary:CreateWindow(Settings)
 			end
 
 			function ButtonValue:Delete()
-			    if Button then
-			        Button:Destroy()
-			        Button = nil
-			    end
+				if Button and Button.Parent then
+					local parent = Button.Parent
+			
+					Button:Destroy()
+			
+					for _, obj in ipairs(parent:GetChildren()) do
+						if obj:IsA("Frame") and (obj.Name == "ButtonSpacing" or obj.Name == "Divider") then
+							if not obj:FindFirstChildWhichIsA("TextLabel") then
+								obj:Destroy()
+							end
+						end
+					end
+			
+					local layout = parent:FindFirstChildWhichIsA("UIListLayout")
+					if layout then
+						layout:ApplyLayout()
+					end
+			
+					Button = nil
+				end
 			end
 
 			return ButtonValue
@@ -2587,10 +2603,26 @@ function RayfieldLibrary:CreateWindow(Settings)
 			end)
 
 			function LabelValue:Delete()
-			    if Label then
-			        Label:Destroy()
-			        Label = nil
-			    end
+				if Label and Label.Parent then
+					local parent = Label.Parent
+			
+					Label:Destroy()
+			
+					for _, obj in ipairs(parent:GetChildren()) do
+						if obj:IsA("Frame") and (obj.Name == "LabelSpacing" or obj.Name == "Divider") then
+							if not obj:FindFirstChildWhichIsA("TextLabel") then
+								obj:Destroy()
+							end
+						end
+					end
+			
+					local layout = parent:FindFirstChildWhichIsA("UIListLayout")
+					if layout then
+						layout:ApplyLayout()
+					end
+			
+					Label = nil
+				end
 			end
 
 			return LabelValue
@@ -4033,6 +4065,7 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
 
