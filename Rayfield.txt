@@ -2165,18 +2165,20 @@ function RayfieldLibrary:CreateWindow(Settings)
 				if Button and Button.Parent then
 					local parent = Button.Parent
 			
+					local siblings = parent:GetChildren()
+					local index = table.find(siblings, Button)
+			
 					Button:Destroy()
 			
-					for _, obj in ipairs(parent:GetChildren()) do
-						if obj:IsA("Frame") and (obj.Name == "ButtonSpacing" or obj.Name == "Divider") then
-							if not obj:FindFirstChildWhichIsA("TextLabel") then
-								obj:Destroy()
-							end
+					if index and siblings[index + 1] then
+						local nextObj = siblings[index + 1]
+						if nextObj:IsA("Frame") and (nextObj.Name == "ButtonSpacing" or nextObj.Name == "Divider") then
+							nextObj:Destroy()
 						end
 					end
 			
 					local layout = parent:FindFirstChildWhichIsA("UIListLayout")
-					if layout then
+					if layout and layout.ApplyLayout then
 						layout:ApplyLayout()
 					end
 			
@@ -2470,18 +2472,20 @@ function RayfieldLibrary:CreateWindow(Settings)
 				if Section and Section.Parent then
 					local parent = Section.Parent
 			
+					local siblings = parent:GetChildren()
+					local index = table.find(siblings, Section)
+			
 					Section:Destroy()
 			
-					for _, obj in ipairs(parent:GetChildren()) do
-						if obj:IsA("Frame") and (obj.Name == "SectionSpacing" or obj.Name == "Divider") then
-							if not obj:FindFirstChildWhichIsA("TextLabel") then
-								obj:Destroy()
-							end
+					if index and siblings[index + 1] then
+						local nextObj = siblings[index + 1]
+						if nextObj:IsA("Frame") and (nextObj.Name == "SectionSpacing" or nextObj.Name == "Divider") then
+							nextObj:Destroy()
 						end
 					end
 			
 					local layout = parent:FindFirstChildWhichIsA("UIListLayout")
-					if layout then
+					if layout and layout.ApplyLayout then
 						layout:ApplyLayout()
 					end
 			
@@ -2606,18 +2610,20 @@ function RayfieldLibrary:CreateWindow(Settings)
 				if Label and Label.Parent then
 					local parent = Label.Parent
 			
+					local siblings = parent:GetChildren()
+					local index = table.find(siblings, Label)
+			
 					Label:Destroy()
 			
-					for _, obj in ipairs(parent:GetChildren()) do
-						if obj:IsA("Frame") and (obj.Name == "LabelSpacing" or obj.Name == "Divider") then
-							if not obj:FindFirstChildWhichIsA("TextLabel") then
-								obj:Destroy()
-							end
+					if index and siblings[index + 1] then
+						local nextObj = siblings[index + 1]
+						if nextObj:IsA("Frame") and (nextObj.Name == "LabelSpacing" or nextObj.Name == "Divider") then
+							nextObj:Destroy()
 						end
 					end
 			
 					local layout = parent:FindFirstChildWhichIsA("UIListLayout")
-					if layout then
+					if layout and layout.ApplyLayout then
 						layout:ApplyLayout()
 					end
 			
@@ -4065,6 +4071,7 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
 
