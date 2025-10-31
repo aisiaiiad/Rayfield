@@ -2161,6 +2161,13 @@ function RayfieldLibrary:CreateWindow(Settings)
 				Button.Name = NewButton
 			end
 
+			function ButtonValue:Delete()
+			    if Button then
+			        Button:Destroy()
+			        Button = nil
+			    end
+			end
+
 			return ButtonValue
 		end
 
@@ -4010,4 +4017,5 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
