@@ -2170,10 +2170,12 @@ function RayfieldLibrary:CreateWindow(Settings)
 			
 					Button:Destroy()
 			
-					if index and siblings[index + 1] then
-						local nextObj = siblings[index + 1]
-						if nextObj:IsA("Frame") and (nextObj.Name == "ButtonSpacing" or nextObj.Name == "Divider") then
-							nextObj:Destroy()
+					if index then
+						for _, i in ipairs({index - 1, index}) do
+							local obj = parent:GetChildren()[i]
+							if obj and obj:IsA("Frame") and (obj.Name == "ButtonSpacing" or obj.Name == "Divider") then
+								obj:Destroy()
+							end
 						end
 					end
 			
@@ -2477,10 +2479,12 @@ function RayfieldLibrary:CreateWindow(Settings)
 			
 					Section:Destroy()
 			
-					if index and siblings[index + 1] then
-						local nextObj = siblings[index + 1]
-						if nextObj:IsA("Frame") and (nextObj.Name == "SectionSpacing" or nextObj.Name == "Divider") then
-							nextObj:Destroy()
+					if index then
+						for _, i in ipairs({index - 1, index}) do
+							local obj = parent:GetChildren()[i]
+							if obj and obj:IsA("Frame") and (obj.Name == "SectionSpacing" or obj.Name == "Divider") then
+								obj:Destroy()
+							end
 						end
 					end
 			
@@ -2615,10 +2619,12 @@ function RayfieldLibrary:CreateWindow(Settings)
 			
 					Label:Destroy()
 			
-					if index and siblings[index + 1] then
-						local nextObj = siblings[index + 1]
-						if nextObj:IsA("Frame") and (nextObj.Name == "LabelSpacing" or nextObj.Name == "Divider") then
-							nextObj:Destroy()
+					if index then
+						for _, i in ipairs({index - 1, index}) do
+							local obj = parent:GetChildren()[i]
+							if obj and obj:IsA("Frame") and (obj.Name == "LabelSpacing" or obj.Name == "Divider") then
+								obj:Destroy()
+							end
 						end
 					end
 			
@@ -4071,6 +4077,7 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
 
