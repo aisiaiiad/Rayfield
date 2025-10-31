@@ -2451,10 +2451,26 @@ function RayfieldLibrary:CreateWindow(Settings)
 			SDone = true
 
 			function SectionValue:Delete()
-			    if Section then
-			        Section:Destroy()
-			        Section = nil
-			    end
+				if Section and Section.Parent then
+					local parent = Section.Parent
+			
+					Section:Destroy()
+			
+					for _, obj in ipairs(parent:GetChildren()) do
+						if obj:IsA("Frame") and (obj.Name == "SectionSpacing" or obj.Name == "Divider") then
+							if not obj:FindFirstChildWhichIsA("TextLabel") then
+								obj:Destroy()
+							end
+						end
+					end
+			
+					local layout = parent:FindFirstChildWhichIsA("UIListLayout")
+					if layout then
+						layout:ApplyLayout()
+					end
+			
+					Section = nil
+				end
 			end
 
 			return SectionValue
@@ -4017,5 +4033,6 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
