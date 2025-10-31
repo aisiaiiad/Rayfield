@@ -2161,7 +2161,7 @@ function RayfieldLibrary:CreateWindow(Settings)
 				Button.Name = NewButton
 			end
 
-			function ButtonValue:Delete()
+			function ButtonValue:Delete() -- by agreedb
 				if Button and Button.Parent then
 					local parent = Button.Parent
 			
@@ -2466,7 +2466,7 @@ function RayfieldLibrary:CreateWindow(Settings)
 
 			SDone = true
 
-			function SectionValue:Delete()
+			function SectionValue:Delete() -- by agreedb
 				if Section and Section.Parent then
 					local parent = Section.Parent
 			
@@ -2602,7 +2602,7 @@ function RayfieldLibrary:CreateWindow(Settings)
 				Label.UIStroke.Color = IgnoreTheme and (Color or Label.BackgroundColor3) or SelectedTheme.SecondaryElementStroke
 			end)
 
-			function LabelValue:Delete()
+			function LabelValue:Delete() -- by agreedb
 				if Label and Label.Parent then
 					local parent = Label.Parent
 			
@@ -4065,6 +4065,7 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
 
