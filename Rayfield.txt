@@ -2443,6 +2443,13 @@ function RayfieldLibrary:CreateWindow(Settings)
 
 			SDone = true
 
+			function SectionValue:Delete()
+			    if Section then
+			        Section:Destroy()
+			        Section = nil
+			    end
+			end
+
 			return SectionValue
 		end
 
@@ -2555,6 +2562,13 @@ function RayfieldLibrary:CreateWindow(Settings)
 				Label.BackgroundColor3 = IgnoreTheme and (Color or Label.BackgroundColor3) or SelectedTheme.SecondaryElementBackground
 				Label.UIStroke.Color = IgnoreTheme and (Color or Label.BackgroundColor3) or SelectedTheme.SecondaryElementStroke
 			end)
+
+			function LabelValue:Delete()
+			    if Label then
+			        Label:Destroy()
+			        Label = nil
+			    end
+			end
 
 			return LabelValue
 		end
@@ -3996,3 +4010,4 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
