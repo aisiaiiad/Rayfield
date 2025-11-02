@@ -762,40 +762,63 @@ local function ChangeTheme(Theme)
 		SelectedTheme = Theme
 	end
 
-	Rayfield.Main.BackgroundColor3 = SelectedTheme.Background
-	Rayfield.Main.Topbar.BackgroundColor3 = SelectedTheme.Topbar
-	Rayfield.Main.Topbar.CornerRepair.BackgroundColor3 = SelectedTheme.Topbar
-	Rayfield.Main.Shadow.Image.ImageColor3 = SelectedTheme.Shadow
+	local t = SelectedTheme
 
-	Rayfield.Main.Topbar.ChangeSize.ImageColor3 = SelectedTheme.TextColor
-	Rayfield.Main.Topbar.Hide.ImageColor3 = SelectedTheme.TextColor
-	Rayfield.Main.Topbar.Search.ImageColor3 = SelectedTheme.TextColor
-	if Topbar:FindFirstChild('Settings') then
-		Rayfield.Main.Topbar.Settings.ImageColor3 = SelectedTheme.TextColor
-		Rayfield.Main.Topbar.Divider.BackgroundColor3 = SelectedTheme.ElementStroke
+	local function safeSet(obj, prop, value)
+		if obj and value and typeof(value) == "Color3" then
+			obj[prop] = value
+		end
 	end
 
-	Main.Search.BackgroundColor3 = SelectedTheme.TextColor
-	Main.Search.Shadow.ImageColor3 = SelectedTheme.TextColor
-	Main.Search.Search.ImageColor3 = SelectedTheme.TextColor
-	Main.Search.Input.PlaceholderColor3 = SelectedTheme.TextColor
-	Main.Search.UIStroke.Color = SelectedTheme.SecondaryElementStroke
+	safeSet(Rayfield.Main, "BackgroundColor3", t.Background)
+	safeSet(Rayfield.Main.Topbar, "BackgroundColor3", t.Topbar)
+	safeSet(Rayfield.Main.Topbar.CornerRepair, "BackgroundColor3", t.Topbar)
+	safeSet(Rayfield.Main.Shadow.Image, "ImageColor3", t.Shadow)
 
-	if Main:FindFirstChild('Notice') then
-		Main.Notice.BackgroundColor3 = SelectedTheme.Background
+	safeSet(Rayfield.Main.Topbar.ChangeSize, "ImageColor3", t.TextColor)
+	safeSet(Rayfield.Main.Topbar.Hide, "ImageColor3", t.TextColor)
+	safeSet(Rayfield.Main.Topbar.Search, "ImageColor3", t.TextColor)
+
+	if Topbar:FindFirstChild("Settings") then
+		safeSet(Rayfield.Main.Topbar.Settings, "ImageColor3", t.TextColor)
+		safeSet(Rayfield.Main.Topbar.Divider, "BackgroundColor3", t.ElementStroke)
+	end
+
+	if Main:FindFirstChild("Search") then
+		safeSet(Main.Search, "BackgroundColor3", t.TextColor)
+		safeSet(Main.Search.Shadow.Image, "ImageColor3", t.TextColor)
+		safeSet(Main.Search.Search, "ImageColor3", t.TextColor)
+		if Main.Search:FindFirstChild("Input") then
+			safeSet(Main.Search.Input, "PlaceholderColor3", t.TextColor)
+		end
+		safeSet(Main.Search.UIStroke, "Color", t.SecondaryElementStroke)
+	end
+
+	if Main:FindFirstChild("Notice") then
+		safeSet(Main.Notice, "BackgroundColor3", t.Background)
 	end
 
 	for _, text in ipairs(Rayfield:GetDescendants()) do
 		if text.Parent.Parent ~= Notifications then
-			if text:IsA('TextLabel') or text:IsA('TextBox') then text.TextColor3 = SelectedTheme.TextColor end
+			if (text:IsA("TextLabel") or text:IsA("TextBox")) and t.TextColor then
+				safeSet(text, "TextColor3", t.TextColor)
+			end
 		end
 	end
 
 	for _, TabPage in ipairs(Elements:GetChildren()) do
 		for _, Element in ipairs(TabPage:GetChildren()) do
-			if Element.ClassName == "Frame" and Element.Name ~= "Placeholder" and Element.Name ~= "SectionSpacing" and Element.Name ~= "Divider" and Element.Name ~= "SectionTitle" and Element.Name ~= "SearchTitle-fsefsefesfsefesfesfThanks" then
-				Element.BackgroundColor3 = SelectedTheme.ElementBackground
-				Element.UIStroke.Color = SelectedTheme.ElementStroke
+			if Element.ClassName == "Frame"
+				and Element.Name ~= "Placeholder"
+				and Element.Name ~= "SectionSpacing"
+				and Element.Name ~= "Divider"
+				and Element.Name ~= "SectionTitle"
+				and Element.Name ~= "SearchTitle-fsefsefesfsefesfesfThanks"
+			then
+				safeSet(Element, "BackgroundColor3", t.ElementBackground)
+				if Element:FindFirstChild("UIStroke") then
+					safeSet(Element.UIStroke, "Color", t.ElementStroke)
+				end
 			end
 		end
 	end
@@ -4085,6 +4108,7 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
 
