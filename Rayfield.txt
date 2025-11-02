@@ -801,6 +801,8 @@ local function ChangeTheme(Theme)
 	end
 end
 
+RayfieldLibrary.ChangeTheme = ChangeTheme
+
 local function getIcon(name : string): {id: number, imageRectSize: Vector2, imageRectOffset: Vector2}
 	if not Icons then
 		warn("Lucide Icons: Cannot use icons as icons library is not loaded")
@@ -4083,6 +4085,7 @@ task.delay(4, function()
 end)
 
 return RayfieldLibrary
+
 
 
 
