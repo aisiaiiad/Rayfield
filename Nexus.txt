@@ -1,196 +1,140 @@
--- NexusUI by Nexus
--- A loadstring-ready Roblox UI library (Rayfield-style API, Modern Dark theme).
--- Usage:  local Nexus = loadstring(game:HttpGet("https://yoursite/nexus"))()
--- Order in this file: Services, Theme, helpers, then Window > Tab > Section/Divider,
--- then elements: Button, Toggle, Input, Slider, Dropdown, Keybind, Label, Paragraph.
+-- NexusUI by Nexus  (v2 — bugfixes: notify layout, slider callback, dropdown anim,
+--   live theme refresh, window show/hide animation, hide-notification)
+-- Usage: local Nexus = loadstring(game:HttpGet("https://yoursite/Nexus.txt"))()
 
 --==================================================================================
 -- SERVICES & ENVIRONMENT
 --==================================================================================
-local TweenService      = game:GetService("TweenService")
-local UserInputService  = game:GetService("UserInputService")
-local RunService        = game:GetService("RunService")
-local SoundService      = game:GetService("SoundService")
-local Players           = game:GetService("Players")
-local CoreGui           = game:GetService("CoreGui")
+local TweenService     = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local SoundService     = game:GetService("SoundService")
+local Players          = game:GetService("Players")
+local CoreGui          = game:GetService("CoreGui")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera      = workspace.CurrentCamera
 
 --==================================================================================
--- THEME  (edit Nexus.Theme or call Nexus.SetTheme{...} BEFORE creating a window)
---   All colors / spacing / sizes are named constants. Never hardcode inline.
+-- THEME
 --==================================================================================
 local Theme = {
-	-- Core palette (Modern Dark)
-	Background       = Color3.fromRGB(15, 15, 20),   -- #0F0F14 main window bg
-	Topbar           = Color3.fromRGB(18, 18, 26),   -- title bar
-	CardBackground   = Color3.fromRGB(26, 26, 36),   -- #1A1A24 element surfaces
-	CardHover        = Color3.fromRGB(34, 34, 47),   -- hovered element surface
-	CardPressed      = Color3.fromRGB(22, 22, 31),   -- pressed element surface
-	Accent           = Color3.fromRGB(74, 158, 255), -- #4A9EFF subtle blue
+	Background       = Color3.fromRGB(15, 15, 20),
+	Topbar           = Color3.fromRGB(18, 18, 26),
+	CardBackground   = Color3.fromRGB(26, 26, 36),
+	CardHover        = Color3.fromRGB(34, 34, 47),
+	CardPressed      = Color3.fromRGB(22, 22, 31),
+	Accent           = Color3.fromRGB(74, 158, 255),
 	AccentPressed    = Color3.fromRGB(58, 132, 222),
-	Stroke           = Color3.fromRGB(40, 40, 54),    -- subtle borders
-	Shadow           = Color3.fromRGB(0, 0, 0),       -- drop shadow color
+	Stroke           = Color3.fromRGB(40, 40, 54),
+	Shadow           = Color3.fromRGB(0, 0, 0),
 
-	-- Text
-	TextColor        = Color3.fromRGB(232, 234, 240), -- #E8EAF0 near-white
-	SubTextColor     = Color3.fromRGB(150, 154, 170), -- muted labels
+	TextColor        = Color3.fromRGB(232, 234, 240),
+	SubTextColor     = Color3.fromRGB(150, 154, 170),
 	PlaceholderColor = Color3.fromRGB(110, 114, 130),
 
-	-- Toggle states
 	ToggleEnabled    = Color3.fromRGB(74, 158, 255),
 	ToggleDisabled   = Color3.fromRGB(55, 55, 72),
 	ToggleKnob       = Color3.fromRGB(232, 234, 240),
 
-	-- Surface transparency (card surfaces ~90% opacity = 0.1 transparency)
-	CardTransparency = 0.1,
+	CardTransparency   = 0.1,
 	WindowTransparency = 0.02,
 
-	-- Geometry constants
-	Radius           = UDim.new(0, 8),   -- Theme.Radius : corner radius everywhere
-	RadiusSmall      = UDim.new(0, 6),
-	Padding          = 12,               -- outer/content padding
-	Gap              = 8,                -- gap between stacked elements
-	ElementHeight    = 40,               -- standard element height
-	TouchMin         = 44,               -- minimum touch target (mobile)
-	IconSize         = 18,
-	ShadowOffset     = 4,                -- drop shadow (4,4) offset
+	Radius        = UDim.new(0, 8),
+	RadiusSmall   = UDim.new(0, 6),
+	Padding       = 12,
+	Gap           = 8,
+	ElementHeight = 40,
+	TouchMin      = 44,
+	IconSize      = 18,
+	ShadowOffset  = 4,
 
-	-- Text sizes (use consistently)
-	TitleSize        = 16,
-	BodySize         = 14,
-	LabelSize        = 12,
-	Font             = Enum.Font.Gotham,
-	FontBold         = Enum.Font.GothamBold,
-	FontMedium       = Enum.Font.GothamMedium,
+	TitleSize  = 16,
+	BodySize   = 14,
+	LabelSize  = 12,
+	Font       = Enum.Font.Gotham,
+	FontBold   = Enum.Font.GothamBold,
+	FontMedium = Enum.Font.GothamMedium,
 
-	-- Animation
-	TweenTime        = 0.08,             -- hover/press speed
-	TweenStyle       = Enum.EasingStyle.Quad,
-	TweenDir         = Enum.EasingDirection.Out,
+	TweenTime  = 0.08,
+	TweenStyle = Enum.EasingStyle.Quad,
+	TweenDir   = Enum.EasingDirection.Out,
 
-	-- Sounds (asset ids; 0 = silent)
-	Sounds = {
-		Volume = 0.5,
-		Click  = 0,
-		Hover  = 0,
-		Toggle = 0,
-		Notify = 0,
-	},
+	Sounds = { Volume = 0.5, Click = 0, Hover = 0, Toggle = 0, Notify = 0 },
 
-	-- Disabled visual signal
-	DisabledTransparency = 0.6, -- ~40% opacity
+	DisabledTransparency = 0.6,
 }
 
 --==================================================================================
 -- LIBRARY TABLE
 --==================================================================================
 local Nexus = {}
-Nexus.Theme       = Theme
-Nexus.Flags       = {}                        -- Flag -> element (read .CurrentValue)
-Nexus.ToggleKey   = Enum.KeyCode.RightShift   -- configurable
-Nexus._windows    = {}
-Nexus._notifyConns = {}
+Nexus.Theme     = Theme
+Nexus.Flags     = {}
+Nexus.ToggleKey = Enum.KeyCode.RightShift
+Nexus._windows  = {}
 
 --==================================================================================
 -- HELPERS
 --==================================================================================
-
--- Shared tween helper so every animation uses consistent easing.
 local function Tween(instance, props, time, style, dir)
 	if typeof(instance) ~= "Instance" then return end
-	local info = TweenInfo.new(
-		time  or Theme.TweenTime,
-		style or Theme.TweenStyle,
-		dir   or Theme.TweenDir
-	)
-	local ok, tween = pcall(function()
-		return TweenService:Create(instance, info, props)
-	end)
-	if ok and tween then
-		tween:Play()
-		return tween
-	end
+	local info = TweenInfo.new(time or Theme.TweenTime, style or Theme.TweenStyle, dir or Theme.TweenDir)
+	local ok, tw = pcall(function() return TweenService:Create(instance, info, props) end)
+	if ok and tw then tw:Play() return tw end
 end
 
--- Deep-merge override table into a target table (used by SetTheme).
 local function deepMerge(target, overrides)
 	if type(overrides) ~= "table" then return target end
-	for key, value in pairs(overrides) do
-		if type(value) == "table" and type(target[key]) == "table" then
-			deepMerge(target[key], value)
-		else
-			target[key] = value
-		end
+	for k, v in pairs(overrides) do
+		if type(v) == "table" and type(target[k]) == "table" then deepMerge(target[k], v)
+		else target[k] = v end
 	end
 	return target
 end
 
--- Quick instance factory.
 local function create(className, props, children)
 	local inst = Instance.new(className)
 	if props then
 		for k, v in pairs(props) do
-			if k ~= "Parent" then
-				pcall(function() inst[k] = v end)
-			end
+			if k ~= "Parent" then pcall(function() inst[k] = v end) end
 		end
 		if props.Parent then inst.Parent = props.Parent end
 	end
-	if children then
-		for _, child in ipairs(children) do
-			child.Parent = inst
-		end
-	end
+	if children then for _, c in ipairs(children) do c.Parent = inst end end
 	return inst
 end
 
--- Add a UICorner to a frame (radius is a named constant).
 local function corner(parent, radius)
 	return create("UICorner", { CornerRadius = radius or Theme.Radius, Parent = parent })
 end
 
--- Add a subtle stroke.
 local function stroke(parent, color, thickness, transparency)
 	return create("UIStroke", {
-		Color = color or Theme.Stroke,
-		Thickness = thickness or 1,
-		Transparency = transparency or 0,
-		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
-		Parent = parent,
+		Color = color or Theme.Stroke, Thickness = thickness or 1,
+		Transparency = transparency or 0, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = parent,
 	})
 end
 
--- Add padding.
 local function padding(parent, all)
 	local p = all or Theme.Padding
 	return create("UIPadding", {
-		PaddingTop    = UDim.new(0, p),
-		PaddingBottom = UDim.new(0, p),
-		PaddingLeft   = UDim.new(0, p),
-		PaddingRight  = UDim.new(0, p),
-		Parent = parent,
+		PaddingTop = UDim.new(0, p), PaddingBottom = UDim.new(0, p),
+		PaddingLeft = UDim.new(0, p), PaddingRight = UDim.new(0, p), Parent = parent,
 	})
 end
 
--- Drop shadow: a slightly larger dark semi-transparent frame behind a card.
+-- Drop shadow as a SIBLING behind a card (never inside a layout flow).
 local function makeShadow(card, parent, zindex)
 	local shadow = create("Frame", {
-		Name = "Shadow",
-		BackgroundColor3 = Theme.Shadow,
-		BackgroundTransparency = 0.55,
+		Name = "Shadow", BackgroundColor3 = Theme.Shadow, BackgroundTransparency = 0.55,
 		Size = UDim2.new(1, Theme.ShadowOffset * 2, 1, Theme.ShadowOffset * 2),
 		Position = UDim2.fromOffset(Theme.ShadowOffset, Theme.ShadowOffset),
-		AnchorPoint = Vector2.new(0, 0),
-		ZIndex = (zindex or 1) - 1,
-		Parent = parent,
+		ZIndex = (zindex or 1) - 1, Parent = parent,
 	})
 	corner(shadow, Theme.Radius)
 	return shadow
 end
 
--- SoundService helper. Plays a configured sound id (0 = silent, no-op).
 local function playSound(id)
 	if not id or id == 0 then return end
 	local ok, sound = pcall(function()
@@ -207,55 +151,53 @@ local function playSound(id)
 	end
 end
 
--- Color lerp helper for hover lightness shifts.
-local function lighten(color, amount)
-	return color:Lerp(Color3.new(1, 1, 1), amount or 0.12)
-end
-
--- Pick a parent GUI host that survives across executors / studio.
 local function getGuiParent()
-	-- Exploit environments expose gethui() for a hidden, protected container.
-	local ok, hui = pcall(function()
-		return typeof(gethui) == "function" and gethui() or nil
-	end)
+	local ok, hui = pcall(function() return typeof(gethui) == "function" and gethui() or nil end)
 	if ok and hui then return hui end
-
-	-- Try CoreGui (works with protected exploit injection).
-	local okCore = pcall(function() return CoreGui:IsA("CoreGui") end)
-	if okCore then return CoreGui end
-
-	-- Fallback to PlayerGui (studio / normal play).
+	if pcall(function() return CoreGui:IsA("CoreGui") end) then return CoreGui end
 	if LocalPlayer and LocalPlayer:FindFirstChildOfClass("PlayerGui") then
 		return LocalPlayer:FindFirstChildOfClass("PlayerGui")
 	end
 	return CoreGui
 end
 
--- Connection bookkeeping mixin: every object tracks connections for clean Destroy.
-local function trackConn(obj, conn)
-	if conn then table.insert(obj._conns, conn) end
-	return conn
-end
-
+local function trackConn(obj, conn) if conn then table.insert(obj._conns, conn) end return conn end
 local function disconnectAll(obj)
-	for _, c in ipairs(obj._conns) do
-		pcall(function() c:Disconnect() end)
-	end
+	for _, c in ipairs(obj._conns) do pcall(function() c:Disconnect() end) end
 	table.clear(obj._conns)
 end
 
--- Wire up generic hover + pressed states on an interactive frame.
--- baseColor/hoverColor/pressedColor are resolved at call time.
+--==================================================================================
+-- THEME REGISTRY (lets ModifyTheme update existing elements live)
+--==================================================================================
+local themedRegistry = {}
+local function registerThemed(entry) table.insert(themedRegistry, entry) return entry end
+
+function Nexus.RefreshTheme()
+	for i = #themedRegistry, 1, -1 do
+		local e = themedRegistry[i]
+		local alive = (not e.inst) or (e.inst and e.inst.Parent ~= nil)
+		if not alive then
+			table.remove(themedRegistry, i)
+		elseif e.refresh then
+			pcall(e.refresh)
+		elseif e.inst then
+			Tween(e.inst, { [e.prop] = Theme[e.key] }, 0.15)
+		end
+	end
+end
+
+--==================================================================================
+-- GENERIC HOVER / PRESS STATES
+--==================================================================================
 local function bindStates(obj, frame, opts)
 	opts = opts or {}
 	local baseColor    = opts.base    or Theme.CardBackground
 	local hoverColor   = opts.hover   or Theme.CardHover
 	local pressedColor = opts.pressed or Theme.CardPressed
 	local enablePressScale = opts.pressScale ~= false
-
 	local baseSize = frame.Size
 	local hovering = false
-
 	local function isEnabled() return not obj._disabled end
 
 	trackConn(obj, frame.MouseEnter:Connect(function()
@@ -264,62 +206,38 @@ local function bindStates(obj, frame, opts)
 		Tween(frame, { BackgroundColor3 = hoverColor })
 		playSound(Theme.Sounds.Hover)
 	end))
-
 	trackConn(obj, frame.MouseLeave:Connect(function()
 		hovering = false
 		if not isEnabled() then return end
 		Tween(frame, { BackgroundColor3 = baseColor })
 	end))
-
 	trackConn(obj, frame.InputBegan:Connect(function(input)
 		if not isEnabled() then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
 			Tween(frame, { BackgroundColor3 = pressedColor })
 			if enablePressScale then
-				Tween(frame, {
-					Size = UDim2.new(
-						baseSize.X.Scale * 0.99, baseSize.X.Offset,
-						baseSize.Y.Scale, math.floor(baseSize.Y.Offset * 0.96)
-					)
-				})
+				Tween(frame, { Size = UDim2.new(baseSize.X.Scale, baseSize.X.Offset,
+					baseSize.Y.Scale, math.floor(baseSize.Y.Offset * 0.96)) })
 			end
 		end
 	end))
-
 	trackConn(obj, frame.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1
 			or input.UserInputType == Enum.UserInputType.Touch then
-			if isEnabled() then
-				Tween(frame, { BackgroundColor3 = hovering and hoverColor or baseColor })
-			end
-			if enablePressScale then
-				Tween(frame, { Size = baseSize })
-			end
+			if isEnabled() then Tween(frame, { BackgroundColor3 = hovering and hoverColor or baseColor }) end
+			if enablePressScale then Tween(frame, { Size = baseSize }) end
 		end
 	end))
-
-	-- expose for setters
-	obj._setBaseColor = function(c)
-		baseColor = c
-		if not hovering and isEnabled() then frame.BackgroundColor3 = c end
-	end
 end
 
 --==================================================================================
--- PUBLIC: THEME / KEYBIND CONFIG
+-- PUBLIC THEME / KEYBIND CONFIG
 --==================================================================================
+function Nexus.SetTheme(overrides) deepMerge(Theme, overrides) return Theme end
 
--- Deep-merge overrides into the live theme. Call BEFORE creating a window.
-function Nexus.SetTheme(overrides)
-	deepMerge(Theme, overrides)
-	return Theme
-end
-
--- Change the global UI toggle key.
 function Nexus.SetToggleKey(keyCode)
-	if typeof(keyCode) == "EnumItem" then
-		Nexus.ToggleKey = keyCode
+	if typeof(keyCode) == "EnumItem" then Nexus.ToggleKey = keyCode
 	elseif type(keyCode) == "string" then
 		local ok, kc = pcall(function() return Enum.KeyCode[keyCode] end)
 		if ok and kc then Nexus.ToggleKey = kc end
@@ -327,29 +245,19 @@ function Nexus.SetToggleKey(keyCode)
 end
 
 --==================================================================================
--- NOTIFICATIONS  (ZIndex 30)
---   Nexus:Notify({ Title=, Content=, Duration=, })
+-- NOTIFICATIONS (ZIndex 30) — fixed layout, no in-flow shadow
 --==================================================================================
 local NotifyHolder
-
 local function ensureNotifyHolder(screen)
 	if NotifyHolder and NotifyHolder.Parent then return NotifyHolder end
 	NotifyHolder = create("Frame", {
-		Name = "NotifyHolder",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.new(1, -16, 1, -16),
-		Size = UDim2.fromOffset(300, 400),
-		ZIndex = 30,
-		Parent = screen,
+		Name = "NotifyHolder", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -16, 1, -16), Size = UDim2.fromOffset(300, 500), ZIndex = 30, Parent = screen,
 	})
 	create("UIListLayout", {
-		FillDirection = Enum.FillDirection.Vertical,
-		VerticalAlignment = Enum.VerticalAlignment.Bottom,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
-		Padding = UDim.new(0, Theme.Gap),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = NotifyHolder,
+		FillDirection = Enum.FillDirection.Vertical, VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right, Padding = UDim.new(0, Theme.Gap),
+		SortOrder = Enum.SortOrder.LayoutOrder, Parent = NotifyHolder,
 	})
 	return NotifyHolder
 end
@@ -360,50 +268,30 @@ function Nexus:Notify(options)
 	local holder = ensureNotifyHolder(screen)
 
 	local card = create("Frame", {
-		BackgroundColor3 = Theme.CardBackground,
-		BackgroundTransparency = 1, -- animate in
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		ClipsDescendants = true,
-		ZIndex = 30,
-		Parent = holder,
+		BackgroundColor3 = Theme.CardBackground, BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		ClipsDescendants = true, ZIndex = 30, Parent = holder,
 	})
 	corner(card)
 	stroke(card, Theme.Stroke, 1, 0.3)
 	padding(card, 10)
-	makeShadow(card, card, 30)
-
-	local layout = create("UIListLayout", {
-		Padding = UDim.new(0, 4),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = card,
-	})
+	create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder, Parent = card })
 
 	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, Theme.TitleSize + 4),
-		Font = Theme.FontBold,
-		Text = tostring(options.Title or "Notification"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 31,
-		Parent = card,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = 1,
+		Font = Theme.FontBold, Text = tostring(options.Title or "Notification"),
+		TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 31, Parent = card,
 	})
 
-	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Font = Theme.Font,
-		Text = tostring(options.Content or ""),
-		TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.LabelSize,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 31,
-		Parent = card,
-	})
+	if options.Content and tostring(options.Content) ~= "" then
+		create("TextLabel", {
+			BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = 2, Font = Theme.Font, Text = tostring(options.Content),
+			TextColor3 = Theme.SubTextColor, TextSize = Theme.LabelSize, TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 31, Parent = card,
+		})
+	end
 
 	Tween(card, { BackgroundTransparency = Theme.CardTransparency }, 0.2)
 	playSound(Theme.Sounds.Notify)
@@ -412,601 +300,354 @@ function Nexus:Notify(options)
 	task.delay(duration, function()
 		if card and card.Parent then
 			Tween(card, { BackgroundTransparency = 1 }, 0.25)
-			task.delay(0.3, function()
-				if card then card:Destroy() end
-			end)
+			task.delay(0.3, function() if card then card:Destroy() end end)
 		end
 	end)
 end
 
 --==================================================================================
--- ELEMENT FACTORIES
---   Each element is built into a Tab's content frame and returns an object with
---   :Set(), :SetVisible(bool), :SetDisabled(bool), :Destroy(), and .CurrentValue.
+-- ELEMENT SCAFFOLD
 --==================================================================================
-
--- Base element scaffold: holder frame inside the tab page + bookkeeping.
 local function newElement(tab, height)
-	local obj = {
-		_conns = {},
-		_disabled = false,
-		_destroyed = false,
-	}
+	local obj = { _conns = {}, _disabled = false, _destroyed = false }
 	obj._holder = create("Frame", {
-		Name = "Element",
-		BackgroundColor3 = Theme.CardBackground,
-		BackgroundTransparency = Theme.CardTransparency,
-		Size = UDim2.new(1, 0, 0, height or math.max(Theme.ElementHeight, Theme.TouchMin)),
-		ZIndex = 2,
-		Parent = tab._page,
+		Name = "Element", BackgroundColor3 = Theme.CardBackground, BackgroundTransparency = Theme.CardTransparency,
+		Size = UDim2.new(1, 0, 0, height or math.max(Theme.ElementHeight, Theme.TouchMin)), ZIndex = 2, Parent = tab._page,
 	})
 	corner(obj._holder)
 	stroke(obj._holder, Theme.Stroke, 1, 0.4)
-
-	function obj:SetVisible(state)
-		if self._holder then self._holder.Visible = state and true or false end
-	end
-
+	function obj:SetVisible(state) if self._holder then self._holder.Visible = state and true or false end end
 	return obj
 end
 
--- common Destroy attach
 local function attachDestroy(obj, tab)
 	function obj:Destroy()
 		if self._destroyed then return end
 		self._destroyed = true
 		disconnectAll(self)
-		if self._flag and Nexus.Flags[self._flag] == self then
-			Nexus.Flags[self._flag] = nil
-		end
+		if self._flag and Nexus.Flags[self._flag] == self then Nexus.Flags[self._flag] = nil end
 		if tab and tab._elements then
-			for i, e in ipairs(tab._elements) do
-				if e == self then table.remove(tab._elements, i) break end
-			end
+			for i, e in ipairs(tab._elements) do if e == self then table.remove(tab._elements, i) break end end
 		end
 		if self._holder then pcall(function() self._holder:Destroy() end) end
 	end
 	if tab and tab._elements then table.insert(tab._elements, obj) end
 end
 
--- registers a flag for value reads
-local function registerFlag(obj, flag)
-	if flag then
-		obj._flag = flag
-		Nexus.Flags[flag] = obj
-	end
-end
+local function registerFlag(obj, flag) if flag then obj._flag = flag Nexus.Flags[flag] = obj end end
 
-------------------------------------------------------------------------------------
+--==================================================================================
 -- BUTTON
---   { Name=string, Callback=function }  ->  :Set(newName)
-------------------------------------------------------------------------------------
+--==================================================================================
 local function createButton(tab, options)
 	options = options or {}
 	local obj = newElement(tab)
-
 	local label = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -Theme.Padding * 2, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontMedium,
-		Text = tostring(options.Name or "Button"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding * 2, 1, 0),
+		Position = UDim2.fromOffset(Theme.Padding, 0), Font = Theme.FontMedium,
+		Text = tostring(options.Name or "Button"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-
 	create("TextLabel", {
-		Name = "Chevron",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(20, 20),
-		Position = UDim2.new(1, -Theme.Padding - 16, 0.5, -10),
-		Font = Theme.FontBold,
-		Text = "›",
-		TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.TitleSize,
-		ZIndex = 3,
-		Parent = obj._holder,
+		Name = "Chevron", BackgroundTransparency = 1, Size = UDim2.fromOffset(20, 20),
+		Position = UDim2.new(1, -Theme.Padding - 16, 0.5, -10), Font = Theme.FontBold, Text = "›",
+		TextColor3 = Theme.SubTextColor, TextSize = Theme.TitleSize, ZIndex = 3, Parent = obj._holder,
 	})
-
-	bindStates(obj, obj._holder, {
-		base = Theme.CardBackground, hover = Theme.CardHover, pressed = Theme.CardPressed,
-	})
-
-	-- click handler (separate from press-state so disabled blocks the callback)
+	bindStates(obj, obj._holder)
 	trackConn(obj, obj._holder.InputBegan:Connect(function(input)
 		if obj._disabled then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			playSound(Theme.Sounds.Click)
-			if type(options.Callback) == "function" then
-				task.spawn(options.Callback)
-			end
+			if type(options.Callback) == "function" then task.spawn(options.Callback) end
 		end
 	end))
-
 	obj.CurrentValue = nil
 	function obj:Set(newName) label.Text = tostring(newName) end
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
-		Tween(obj._holder, {
-			BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency
-		})
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 		label.TextTransparency = state and 0.5 or 0
 	end
-
 	attachDestroy(obj, tab)
 	return obj
 end
 
-------------------------------------------------------------------------------------
+--==================================================================================
 -- TOGGLE / SWITCH
---   { Name=, CurrentValue=bool, Flag=, Callback=function(value) }  -> :Set(bool)
-------------------------------------------------------------------------------------
+--==================================================================================
 local function createToggle(tab, options)
 	options = options or {}
 	local obj = newElement(tab)
 	obj.CurrentValue = options.CurrentValue and true or false
-
 	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -Theme.Padding * 2 - 50, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontMedium,
-		Text = tostring(options.Name or "Toggle"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding * 2 - 50, 1, 0),
+		Position = UDim2.fromOffset(Theme.Padding, 0), Font = Theme.FontMedium,
+		Text = tostring(options.Name or "Toggle"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-
-	-- switch track
 	local track = create("Frame", {
-		Name = "Track",
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -Theme.Padding, 0.5, 0),
-		Size = UDim2.fromOffset(44, 24),
-		BackgroundColor3 = obj.CurrentValue and Theme.ToggleEnabled or Theme.ToggleDisabled,
-		ZIndex = 3,
-		Parent = obj._holder,
+		Name = "Track", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -Theme.Padding, 0.5, 0),
+		Size = UDim2.fromOffset(44, 24), BackgroundColor3 = obj.CurrentValue and Theme.ToggleEnabled or Theme.ToggleDisabled,
+		ZIndex = 3, Parent = obj._holder,
 	})
 	corner(track, UDim.new(1, 0))
-
 	local knob = create("Frame", {
-		Name = "Knob",
-		AnchorPoint = Vector2.new(0, 0.5),
+		Name = "Knob", AnchorPoint = Vector2.new(0, 0.5),
 		Position = obj.CurrentValue and UDim2.new(1, -22, 0.5, 0) or UDim2.new(0, 2, 0.5, 0),
-		Size = UDim2.fromOffset(20, 20),
-		BackgroundColor3 = Theme.ToggleKnob,
-		ZIndex = 4,
-		Parent = track,
+		Size = UDim2.fromOffset(20, 20), BackgroundColor3 = Theme.ToggleKnob, ZIndex = 4, Parent = track,
 	})
 	corner(knob, UDim.new(1, 0))
-
 	bindStates(obj, obj._holder, { pressScale = false })
 
 	local function render()
-		Tween(track, {
-			BackgroundColor3 = obj.CurrentValue and Theme.ToggleEnabled or Theme.ToggleDisabled
-		})
-		Tween(knob, {
-			Position = obj.CurrentValue and UDim2.new(1, -22, 0.5, 0) or UDim2.new(0, 2, 0.5, 0)
-		}, 0.12)
+		Tween(track, { BackgroundColor3 = obj.CurrentValue and Theme.ToggleEnabled or Theme.ToggleDisabled })
+		Tween(knob, { Position = obj.CurrentValue and UDim2.new(1, -22, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) }, 0.12)
 	end
-
 	function obj:Set(value, skipCallback)
 		obj.CurrentValue = value and true or false
 		render()
-		if not skipCallback and type(options.Callback) == "function" then
-			task.spawn(options.Callback, obj.CurrentValue)
-		end
+		if not skipCallback and type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentValue) end
 	end
-
 	trackConn(obj, obj._holder.InputBegan:Connect(function(input)
 		if obj._disabled then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			playSound(Theme.Sounds.Toggle)
 			obj:Set(not obj.CurrentValue)
 		end
 	end))
-
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
-		Tween(obj._holder, {
-			BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency
-		})
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 	end
-
+	registerThemed({ inst = track, refresh = function()
+		track.BackgroundColor3 = obj.CurrentValue and Theme.ToggleEnabled or Theme.ToggleDisabled
+	end })
 	registerFlag(obj, options.Flag)
 	attachDestroy(obj, tab)
-	-- fire initial callback so consumers sync to default
-	if type(options.Callback) == "function" then
-		task.spawn(options.Callback, obj.CurrentValue)
-	end
+	if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentValue) end
 	return obj
 end
 
-------------------------------------------------------------------------------------
+--==================================================================================
 -- TEXT INPUT
---   { Name=, CurrentValue=, PlaceholderText=, RemoveTextAfterFocusLost=bool,
---     Flag=, Callback=function(text) }  -> :Set(text)
-------------------------------------------------------------------------------------
+--==================================================================================
 local function createInput(tab, options)
 	options = options or {}
 	local obj = newElement(tab, math.max(Theme.ElementHeight + 16, Theme.TouchMin))
 	obj.CurrentValue = tostring(options.CurrentValue or "")
-
 	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(0.45, 0, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontMedium,
-		Text = tostring(options.Name or "Input"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(0.45, 0, 1, 0), Position = UDim2.fromOffset(Theme.Padding, 0),
+		Font = Theme.FontMedium, Text = tostring(options.Name or "Input"), TextColor3 = Theme.TextColor,
+		TextSize = Theme.BodySize, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-
 	local box = create("Frame", {
-		Name = "Box",
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -Theme.Padding, 0.5, 0),
-		Size = UDim2.new(0.5, -Theme.Padding, 0, Theme.TouchMin - 12),
-		BackgroundColor3 = Theme.Background,
-		ZIndex = 3,
-		Parent = obj._holder,
+		Name = "Box", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -Theme.Padding, 0.5, 0),
+		Size = UDim2.new(0.5, -Theme.Padding, 0, Theme.TouchMin - 12), BackgroundColor3 = Theme.Background, ZIndex = 3, Parent = obj._holder,
 	})
 	corner(box, Theme.RadiusSmall)
 	local boxStroke = stroke(box, Theme.Stroke, 1, 0)
-
 	local input = create("TextBox", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -16, 1, 0),
-		Position = UDim2.fromOffset(8, 0),
-		Font = Theme.Font,
-		Text = obj.CurrentValue,
-		PlaceholderText = tostring(options.PlaceholderText or "..."),
-		PlaceholderColor3 = Theme.PlaceholderColor,
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ClearTextOnFocus = false,
-		ClipsDescendants = true,
-		ZIndex = 4,
-		Parent = box,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -16, 1, 0), Position = UDim2.fromOffset(8, 0),
+		Font = Theme.Font, Text = obj.CurrentValue, PlaceholderText = tostring(options.PlaceholderText or "..."),
+		PlaceholderColor3 = Theme.PlaceholderColor, TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false, ClipsDescendants = true, ZIndex = 4, Parent = box,
 	})
-
-	-- focused state highlights the box stroke
 	trackConn(obj, input.Focused:Connect(function()
 		if obj._disabled then return end
 		Tween(boxStroke, { Color = Theme.Accent }, 0.1)
 	end))
-
 	trackConn(obj, input.FocusLost:Connect(function()
 		Tween(boxStroke, { Color = Theme.Stroke }, 0.1)
 		obj.CurrentValue = input.Text
-		if type(options.Callback) == "function" then
-			task.spawn(options.Callback, input.Text)
-		end
-		if options.RemoveTextAfterFocusLost then
-			input.Text = ""
-			obj.CurrentValue = ""
-		end
+		if type(options.Callback) == "function" then task.spawn(options.Callback, input.Text) end
+		if options.RemoveTextAfterFocusLost then input.Text = "" obj.CurrentValue = "" end
 	end))
-
-	function obj:Set(text)
-		obj.CurrentValue = tostring(text)
-		input.Text = obj.CurrentValue
-	end
-
+	function obj:Set(text) obj.CurrentValue = tostring(text) input.Text = obj.CurrentValue end
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
 		input.TextEditable = not obj._disabled
-		Tween(obj._holder, {
-			BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency
-		})
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 		input.TextTransparency = state and 0.5 or 0
 	end
-
 	registerFlag(obj, options.Flag)
 	attachDestroy(obj, tab)
 	return obj
 end
 
-------------------------------------------------------------------------------------
--- SLIDER
---   { Name=, Range={min,max}, Increment=, Suffix=, CurrentValue=, Flag=, Callback }
-------------------------------------------------------------------------------------
+--==================================================================================
+-- SLIDER (only fires callback when the stepped value actually changes)
+--==================================================================================
 local function createSlider(tab, options)
 	options = options or {}
 	local range = options.Range or { 0, 100 }
 	local minV, maxV = range[1], range[2]
 	local increment = options.Increment or 1
 	local suffix = options.Suffix and (" " .. tostring(options.Suffix)) or ""
-
 	local obj = newElement(tab, math.max(Theme.ElementHeight + 20, Theme.TouchMin + 16))
 	obj.CurrentValue = math.clamp(options.CurrentValue or minV, minV, maxV)
+	local lastFired = obj.CurrentValue
 
-	local nameLabel = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -Theme.Padding * 2 - 60, 0, 20),
-		Position = UDim2.fromOffset(Theme.Padding, 8),
-		Font = Theme.FontMedium,
-		Text = tostring(options.Name or "Slider"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+	create("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding * 2 - 60, 0, 20), Position = UDim2.fromOffset(Theme.Padding, 8),
+		Font = Theme.FontMedium, Text = tostring(options.Name or "Slider"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-
 	local valueLabel = create("TextLabel", {
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 0),
-		Size = UDim2.fromOffset(70, 20),
-		Position = UDim2.new(1, -Theme.Padding, 0, 8),
-		Font = Theme.FontBold,
-		Text = tostring(obj.CurrentValue) .. suffix,
-		TextColor3 = Theme.Accent,
-		TextSize = Theme.LabelSize,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(70, 20),
+		Position = UDim2.new(1, -Theme.Padding, 0, 8), Font = Theme.FontBold, Text = tostring(obj.CurrentValue) .. suffix,
+		TextColor3 = Theme.Accent, TextSize = Theme.LabelSize, TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3, Parent = obj._holder,
 	})
-
 	local barBg = create("Frame", {
-		Name = "Bar",
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, Theme.Padding, 1, -14),
-		Size = UDim2.new(1, -Theme.Padding * 2, 0, 6),
-		BackgroundColor3 = Theme.ToggleDisabled,
-		ZIndex = 3,
-		Parent = obj._holder,
+		Name = "Bar", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, Theme.Padding, 1, -14),
+		Size = UDim2.new(1, -Theme.Padding * 2, 0, 6), BackgroundColor3 = Theme.ToggleDisabled, ZIndex = 3, Parent = obj._holder,
 	})
 	corner(barBg, UDim.new(1, 0))
-
 	local fill = create("Frame", {
-		Name = "Fill",
-		Size = UDim2.new((obj.CurrentValue - minV) / (maxV - minV), 0, 1, 0),
-		BackgroundColor3 = Theme.Accent,
-		ZIndex = 4,
-		Parent = barBg,
+		Name = "Fill", Size = UDim2.new((obj.CurrentValue - minV) / (maxV - minV), 0, 1, 0),
+		BackgroundColor3 = Theme.Accent, ZIndex = 4, Parent = barBg,
 	})
 	corner(fill, UDim.new(1, 0))
-
 	local knob = create("Frame", {
-		Name = "Knob",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(14, 14),
-		BackgroundColor3 = Theme.ToggleKnob,
-		ZIndex = 5,
-		Parent = fill,
+		Name = "Knob", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Theme.ToggleKnob, ZIndex = 5, Parent = fill,
 	})
 	corner(knob, UDim.new(1, 0))
-
 	local dragging = false
 
 	local function setFromAlpha(alpha, fireCallback)
 		alpha = math.clamp(alpha, 0, 1)
 		local raw = minV + (maxV - minV) * alpha
-		local stepped = math.floor((raw / increment) + 0.5) * increment
-		stepped = math.clamp(stepped, minV, maxV)
+		local stepped = math.clamp(math.floor((raw / increment) + 0.5) * increment, minV, maxV)
 		obj.CurrentValue = stepped
 		local renderAlpha = (stepped - minV) / (maxV - minV)
 		Tween(fill, { Size = UDim2.new(renderAlpha, 0, 1, 0) }, 0.05)
 		valueLabel.Text = tostring(stepped) .. suffix
-		if fireCallback and type(options.Callback) == "function" then
-			task.spawn(options.Callback, stepped)
+		if fireCallback and stepped ~= lastFired then
+			lastFired = stepped
+			if type(options.Callback) == "function" then task.spawn(options.Callback, stepped) end
 		end
 	end
-
 	local function inputToAlpha(input)
-		local rel = (input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X
-		return rel
+		return (input.Position.X - barBg.AbsolutePosition.X) / barBg.AbsoluteSize.X
 	end
 
 	trackConn(obj, obj._holder.InputBegan:Connect(function(input)
 		if obj._disabled then return end
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			setFromAlpha(inputToAlpha(input), true)
 		end
 	end))
-
 	trackConn(obj, UserInputService.InputChanged:Connect(function(input)
-		if dragging and not obj._disabled and
-			(input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch) then
+		if dragging and not obj._disabled and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			setFromAlpha(inputToAlpha(input), true)
 		end
 	end))
-
 	trackConn(obj, UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
 	end))
-
 	function obj:Set(value)
-		local alpha = (math.clamp(value, minV, maxV) - minV) / (maxV - minV)
-		setFromAlpha(alpha, true)
+		lastFired = nil
+		setFromAlpha((math.clamp(value, minV, maxV) - minV) / (maxV - minV), true)
 	end
-
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
-		Tween(obj._holder, {
-			BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency
-		})
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 	end
-
+	registerThemed({ inst = fill, prop = "BackgroundColor3", key = "Accent" })
+	registerThemed({ inst = valueLabel, prop = "TextColor3", key = "Accent" })
 	registerFlag(obj, options.Flag)
 	attachDestroy(obj, tab)
 	return obj
 end
 
-------------------------------------------------------------------------------------
--- DROPDOWN  (list opens with ZIndex 10)
---   { Name=, Options={}, CurrentOption={}, MultipleOptions=bool, Flag=, Callback }
---   :Refresh(newOptions)   :Set(selection)
-------------------------------------------------------------------------------------
+--==================================================================================
+-- DROPDOWN (animated open/close, compact rows)
+--==================================================================================
 local function createDropdown(tab, options)
 	options = options or {}
 	local multi = options.MultipleOptions and true or false
+	local rowH = 28
 	local obj = newElement(tab)
 	obj._optionList = options.Options or {}
 	obj.CurrentOption = options.CurrentOption or {}
 	if type(obj.CurrentOption) ~= "table" then obj.CurrentOption = { obj.CurrentOption } end
 
-	local nameLabel = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(0.5, 0, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontMedium,
-		Text = tostring(options.Name or "Dropdown"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+	create("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(0.5, 0, 0, Theme.ElementHeight), Position = UDim2.fromOffset(Theme.Padding, 0),
+		Font = Theme.FontMedium, Text = tostring(options.Name or "Dropdown"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-
 	local selLabel = create("TextLabel", {
-		Name = "Selected",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Size = UDim2.new(0.45, -24, 1, 0),
-		Position = UDim2.new(1, -34, 0.5, 0),
-		Font = Theme.Font,
-		Text = table.concat(obj.CurrentOption, ", "),
-		TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.LabelSize,
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		ZIndex = 3,
-		Parent = obj._holder,
+		Name = "Selected", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.new(0.45, -24, 0, Theme.ElementHeight),
+		Position = UDim2.new(1, -34, 0, 0), Font = Theme.Font, Text = table.concat(obj.CurrentOption, ", "),
+		TextColor3 = Theme.SubTextColor, TextSize = Theme.LabelSize, TextXAlignment = Enum.TextXAlignment.Right,
+		TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3, Parent = obj._holder,
 	})
-
 	local arrow = create("TextLabel", {
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Size = UDim2.fromOffset(20, 20),
-		Position = UDim2.new(1, -Theme.Padding, 0.5, 0),
-		Font = Theme.FontBold,
-		Text = "▾",
-		TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.LabelSize,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(20, Theme.ElementHeight),
+		Position = UDim2.new(1, -Theme.Padding, 0, 0), Font = Theme.FontBold, Text = "▾", TextColor3 = Theme.SubTextColor,
+		TextSize = Theme.LabelSize, ZIndex = 3, Parent = obj._holder,
 	})
 
-	-- The expandable list. ClipsDescendants on the holder lets it grow downward.
 	obj._holder.ClipsDescendants = true
 	local listFrame = create("Frame", {
-		Name = "List",
-		BackgroundTransparency = 1,
-		Position = UDim2.new(0, 0, 0, Theme.ElementHeight),
-		Size = UDim2.new(1, 0, 0, 0),
-		ZIndex = 10,
-		Parent = obj._holder,
+		Name = "List", BackgroundTransparency = 1, Position = UDim2.new(0, 8, 0, Theme.ElementHeight),
+		Size = UDim2.new(1, -16, 0, 0), ZIndex = 10, Parent = obj._holder,
 	})
-	local listLayout = create("UIListLayout", {
-		Padding = UDim.new(0, 4),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = listFrame,
-	})
+	create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = listFrame })
 
 	local open = false
 	local optionButtons = {}
-
-	local function refreshSelectedText()
-		selLabel.Text = (#obj.CurrentOption > 0) and table.concat(obj.CurrentOption, ", ") or "None"
-	end
-
-	local function setHeight()
+	local function refreshSelectedText() selLabel.Text = (#obj.CurrentOption > 0) and table.concat(obj.CurrentOption, ", ") or "None" end
+	local function setHeight(animate)
+		local target
 		if open then
 			local rows = #obj._optionList
-			obj._holder.Size = UDim2.new(1, 0, 0, Theme.ElementHeight + rows * (Theme.TouchMin - 6) + 8)
+			target = UDim2.new(1, 0, 0, Theme.ElementHeight + 8 + rows * rowH + math.max(0, rows - 1) * 4)
 		else
-			obj._holder.Size = UDim2.new(1, 0, 0, Theme.ElementHeight)
+			target = UDim2.new(1, 0, 0, Theme.ElementHeight)
 		end
+		if animate then Tween(obj._holder, { Size = target }, 0.18, Enum.EasingStyle.Quint) else obj._holder.Size = target end
 	end
-
-	local function isSelected(name)
-		for _, v in ipairs(obj.CurrentOption) do if v == name then return true end end
-		return false
-	end
+	local function isSelected(name) for _, v in ipairs(obj.CurrentOption) do if v == name then return true end end return false end
 
 	local function buildOptions()
 		for _, b in ipairs(optionButtons) do b:Destroy() end
 		table.clear(optionButtons)
 		for i, name in ipairs(obj._optionList) do
 			local row = create("TextButton", {
-				BackgroundColor3 = isSelected(name) and Theme.Accent or Theme.Background,
-				Size = UDim2.new(1, 0, 0, Theme.TouchMin - 10),
-				Font = Theme.Font,
-				Text = tostring(name),
-				TextColor3 = Theme.TextColor,
-				TextSize = Theme.LabelSize,
-				AutoButtonColor = false,
-				LayoutOrder = i,
-				ZIndex = 10,
-				Parent = listFrame,
+				BackgroundColor3 = isSelected(name) and Theme.Accent or Theme.Background, Size = UDim2.new(1, 0, 0, rowH),
+				Font = Theme.Font, Text = tostring(name), TextColor3 = Theme.TextColor, TextSize = Theme.LabelSize,
+				AutoButtonColor = false, LayoutOrder = i, ZIndex = 10, Parent = listFrame,
 			})
 			corner(row, Theme.RadiusSmall)
-			row.MouseEnter:Connect(function()
-				if not isSelected(name) then Tween(row, { BackgroundColor3 = Theme.CardHover }) end
-			end)
-			row.MouseLeave:Connect(function()
-				if not isSelected(name) then Tween(row, { BackgroundColor3 = Theme.Background }) end
-			end)
+			row.MouseEnter:Connect(function() if not isSelected(name) then Tween(row, { BackgroundColor3 = Theme.CardHover }) end end)
+			row.MouseLeave:Connect(function() if not isSelected(name) then Tween(row, { BackgroundColor3 = Theme.Background }) end end)
 			row.MouseButton1Click:Connect(function()
 				playSound(Theme.Sounds.Click)
 				if multi then
 					if isSelected(name) then
-						for j, v in ipairs(obj.CurrentOption) do
-							if v == name then table.remove(obj.CurrentOption, j) break end
-						end
-					else
-						table.insert(obj.CurrentOption, name)
-					end
-				else
-					obj.CurrentOption = { name }
-				end
+						for j, v in ipairs(obj.CurrentOption) do if v == name then table.remove(obj.CurrentOption, j) break end end
+					else table.insert(obj.CurrentOption, name) end
+				else obj.CurrentOption = { name } end
 				buildOptions()
 				refreshSelectedText()
-				if type(options.Callback) == "function" then
-					task.spawn(options.Callback, obj.CurrentOption)
-				end
-				if not multi then
-					open = false
-					setHeight()
-					Tween(arrow, { Rotation = 0 })
-				end
+				if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentOption) end
+				if not multi then open = false setHeight(true) Tween(arrow, { Rotation = 0 }) end
 			end)
 			table.insert(optionButtons, row)
 		end
 	end
 
 	bindStates(obj, obj._holder, { pressScale = false })
-
 	trackConn(obj, obj._holder.InputBegan:Connect(function(input)
 		if obj._disabled then return end
-		-- only toggle when clicking the top bar region, not list rows
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			local relY = input.Position.Y - obj._holder.AbsolutePosition.Y
 			if relY <= Theme.ElementHeight then
 				open = not open
-				setHeight()
+				setHeight(true)
 				Tween(arrow, { Rotation = open and 180 or 0 })
 				playSound(Theme.Sounds.Click)
 			end
@@ -1015,158 +656,102 @@ local function createDropdown(tab, options)
 
 	function obj:Refresh(newOptions)
 		obj._optionList = newOptions or {}
-		-- drop any selections no longer present
 		for i = #obj.CurrentOption, 1, -1 do
 			local found = false
-			for _, n in ipairs(obj._optionList) do
-				if n == obj.CurrentOption[i] then found = true break end
-			end
+			for _, n in ipairs(obj._optionList) do if n == obj.CurrentOption[i] then found = true break end end
 			if not found then table.remove(obj.CurrentOption, i) end
 		end
 		buildOptions()
 		refreshSelectedText()
-		if open then setHeight() end
+		if open then setHeight(false) end
 	end
-
 	function obj:Set(selection)
 		if type(selection) ~= "table" then selection = { selection } end
 		obj.CurrentOption = selection
 		buildOptions()
 		refreshSelectedText()
-		if type(options.Callback) == "function" then
-			task.spawn(options.Callback, obj.CurrentOption)
-		end
+		if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentOption) end
 	end
-
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
-		Tween(obj._holder, {
-			BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency
-		})
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 	end
 
 	buildOptions()
 	refreshSelectedText()
+	registerThemed({ inst = obj._holder, refresh = buildOptions })
 	registerFlag(obj, options.Flag)
 	attachDestroy(obj, tab)
 	return obj
 end
 
-------------------------------------------------------------------------------------
+--==================================================================================
 -- KEYBIND
---   { Name=, CurrentKeybind="Q", HoldToInteract=bool, Flag=, Callback }
-------------------------------------------------------------------------------------
+--==================================================================================
 local function createKeybind(tab, options)
 	options = options or {}
 	local obj = newElement(tab)
 	obj.CurrentKeybind = tostring(options.CurrentKeybind or "None")
 	obj.CurrentValue = obj.CurrentKeybind
-
 	create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -Theme.Padding * 2 - 80, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontMedium,
-		Text = tostring(options.Name or "Keybind"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding * 2 - 80, 1, 0), Position = UDim2.fromOffset(Theme.Padding, 0),
+		Font = Theme.FontMedium, Text = tostring(options.Name or "Keybind"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-
 	local keyBox = create("TextButton", {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -Theme.Padding, 0.5, 0),
-		Size = UDim2.fromOffset(70, Theme.TouchMin - 14),
-		BackgroundColor3 = Theme.Background,
-		Font = Theme.FontMedium,
-		Text = obj.CurrentKeybind,
-		TextColor3 = Theme.Accent,
-		TextSize = Theme.LabelSize,
-		AutoButtonColor = false,
-		ZIndex = 3,
-		Parent = obj._holder,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -Theme.Padding, 0.5, 0), Size = UDim2.fromOffset(70, Theme.TouchMin - 14),
+		BackgroundColor3 = Theme.Background, Font = Theme.FontMedium, Text = obj.CurrentKeybind, TextColor3 = Theme.Accent,
+		TextSize = Theme.LabelSize, AutoButtonColor = false, ZIndex = 3, Parent = obj._holder,
 	})
 	corner(keyBox, Theme.RadiusSmall)
 	stroke(keyBox, Theme.Stroke, 1, 0)
-
 	local listening = false
-
 	trackConn(obj, keyBox.MouseButton1Click:Connect(function()
 		if obj._disabled then return end
-		listening = true
-		keyBox.Text = "..."
-		Tween(keyBox, { BackgroundColor3 = Theme.CardHover })
+		listening = true keyBox.Text = "..." Tween(keyBox, { BackgroundColor3 = Theme.CardHover })
 	end))
-
 	trackConn(obj, UserInputService.InputBegan:Connect(function(input, gpe)
 		if listening and input.UserInputType == Enum.UserInputType.Keyboard then
 			listening = false
-			obj.CurrentKeybind = input.KeyCode.Name
-			obj.CurrentValue = obj.CurrentKeybind
-			keyBox.Text = obj.CurrentKeybind
-			Tween(keyBox, { BackgroundColor3 = Theme.Background })
+			obj.CurrentKeybind = input.KeyCode.Name obj.CurrentValue = obj.CurrentKeybind
+			keyBox.Text = obj.CurrentKeybind Tween(keyBox, { BackgroundColor3 = Theme.Background })
 			return
 		end
 		if gpe then return end
-		-- fire callback on bound key press
-		if not obj._disabled and input.UserInputType == Enum.UserInputType.Keyboard
-			and input.KeyCode.Name == obj.CurrentKeybind then
-			if type(options.Callback) == "function" then
-				task.spawn(options.Callback, obj.CurrentKeybind)
-			end
+		if not obj._disabled and input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode.Name == obj.CurrentKeybind then
+			if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentKeybind) end
 		end
 	end))
-
-	function obj:Set(key)
-		obj.CurrentKeybind = tostring(key)
-		obj.CurrentValue = obj.CurrentKeybind
-		keyBox.Text = obj.CurrentKeybind
-	end
-
+	function obj:Set(key) obj.CurrentKeybind = tostring(key) obj.CurrentValue = obj.CurrentKeybind keyBox.Text = obj.CurrentKeybind end
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
-		Tween(obj._holder, {
-			BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency
-		})
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 	end
-
+	registerThemed({ inst = keyBox, prop = "TextColor3", key = "Accent" })
 	registerFlag(obj, options.Flag)
 	attachDestroy(obj, tab)
 	return obj
 end
 
-------------------------------------------------------------------------------------
--- LABEL  ->  CreateLabel(text)  ->  :Set(text)
-------------------------------------------------------------------------------------
+--==================================================================================
+-- LABEL
+--==================================================================================
 local function createLabel(tab, text, color)
 	local obj = newElement(tab, Theme.ElementHeight)
 	obj._holder.BackgroundTransparency = 1
 	local label = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -Theme.Padding * 2, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontMedium,
-		Text = tostring(text or "Label"),
-		TextColor3 = color or Theme.SubTextColor,
-		TextSize = Theme.LabelSize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextWrapped = true,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding * 2, 1, 0), Position = UDim2.fromOffset(Theme.Padding, 0),
+		Font = Theme.FontMedium, Text = tostring(text or "Label"), TextColor3 = color or Theme.SubTextColor, TextSize = Theme.LabelSize,
+		TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true, ZIndex = 3, Parent = obj._holder,
 	})
-	function obj:Set(newText, newColor)
-		label.Text = tostring(newText)
-		if newColor then label.TextColor3 = newColor end
-	end
+	function obj:Set(newText, newColor) label.Text = tostring(newText) if newColor then label.TextColor3 = newColor end end
 	attachDestroy(obj, tab)
 	return obj
 end
 
-------------------------------------------------------------------------------------
--- PARAGRAPH  ->  { Title=, Content= }  ->  :Set({Title=,Content=})
-------------------------------------------------------------------------------------
+--==================================================================================
+-- PARAGRAPH
+--==================================================================================
 local function createParagraph(tab, options)
 	options = options or {}
 	local obj = newElement(tab)
@@ -1174,108 +759,48 @@ local function createParagraph(tab, options)
 	obj._holder.AutomaticSize = Enum.AutomaticSize.Y
 	padding(obj._holder, 10)
 	create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = obj._holder })
-
 	local title = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, Theme.BodySize + 4),
-		Font = Theme.FontBold,
-		Text = tostring(options.Title or "Title"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, Theme.BodySize + 4), LayoutOrder = 1, Font = Theme.FontBold,
+		Text = tostring(options.Title or "Title"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
 	local content = create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Font = Theme.Font,
-		Text = tostring(options.Content or ""),
-		TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.LabelSize,
-		TextWrapped = true,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = obj._holder,
+		BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2,
+		Font = Theme.Font, Text = tostring(options.Content or ""), TextColor3 = Theme.SubTextColor, TextSize = Theme.LabelSize,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
 	})
-	function obj:Set(o)
-		o = o or {}
-		if o.Title   then title.Text = tostring(o.Title) end
-		if o.Content then content.Text = tostring(o.Content) end
-	end
+	function obj:Set(o) o = o or {} if o.Title then title.Text = tostring(o.Title) end if o.Content then content.Text = tostring(o.Content) end end
 	attachDestroy(obj, tab)
 	return obj
 end
 
 --==================================================================================
--- TAB  (created via Window:CreateTab)
+-- TAB
 --==================================================================================
 local function createTab(window, name, icon)
-	local tab = {
-		_conns = {},
-		_elements = {},
-		_window = window,
-	}
-
-	-- Tab button in the sidebar
+	local tab = { _conns = {}, _elements = {}, _window = window }
 	tab._button = create("TextButton", {
-		Name = "TabBtn",
-		BackgroundColor3 = Theme.CardBackground,
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, Theme.TouchMin),
-		Font = Theme.FontMedium,
-		Text = tostring(name or "Tab"),
-		TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.BodySize,
-		AutoButtonColor = false,
-		ZIndex = 3,
-		Parent = window._tabList,
+		Name = "TabBtn", BackgroundColor3 = Theme.CardBackground, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, Theme.TouchMin),
+		Font = Theme.FontMedium, Text = tostring(name or "Tab"), TextColor3 = Theme.SubTextColor, TextSize = Theme.BodySize,
+		AutoButtonColor = false, ZIndex = 3, Parent = window._tabList,
 	})
 	corner(tab._button, Theme.RadiusSmall)
-
-	-- Scrolling content page
 	tab._page = create("ScrollingFrame", {
-		Name = "Page",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 4,
-		ScrollBarImageColor3 = Theme.Accent,
-		Visible = false,
-		ZIndex = 2,
-		Parent = window._content,
+		Name = "Page", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), CanvasSize = UDim2.new(0, 0, 0, 0),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4, ScrollBarImageColor3 = Theme.Accent, Visible = false, ZIndex = 2, Parent = window._content,
 	})
-	create("UIListLayout", {
-		Padding = UDim.new(0, Theme.Gap),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = tab._page,
-	})
-	create("UIPadding", {
-		PaddingTop = UDim.new(0, Theme.Gap),
-		PaddingBottom = UDim.new(0, Theme.Gap),
-		PaddingRight = UDim.new(0, 4),
-		Parent = tab._page,
-	})
+	registerThemed({ inst = tab._page, prop = "ScrollBarImageColor3", key = "Accent" })
+	create("UIListLayout", { Padding = UDim.new(0, Theme.Gap), SortOrder = Enum.SortOrder.LayoutOrder, Parent = tab._page })
+	create("UIPadding", { PaddingTop = UDim.new(0, Theme.Gap), PaddingBottom = UDim.new(0, Theme.Gap), PaddingRight = UDim.new(0, 4), Parent = tab._page })
 
-	-- hover state on tab button
 	trackConn(tab, tab._button.MouseEnter:Connect(function()
-		if window._activeTab ~= tab then
-			Tween(tab._button, { BackgroundTransparency = 0.6, TextColor3 = Theme.TextColor })
-		end
+		if window._activeTab ~= tab then Tween(tab._button, { BackgroundTransparency = 0.6, TextColor3 = Theme.TextColor }) end
 	end))
 	trackConn(tab, tab._button.MouseLeave:Connect(function()
-		if window._activeTab ~= tab then
-			Tween(tab._button, { BackgroundTransparency = 1, TextColor3 = Theme.SubTextColor })
-		end
+		if window._activeTab ~= tab then Tween(tab._button, { BackgroundTransparency = 1, TextColor3 = Theme.SubTextColor }) end
 	end))
-	trackConn(tab, tab._button.MouseButton1Click:Connect(function()
-		window:_selectTab(tab)
-		playSound(Theme.Sounds.Click)
-	end))
+	trackConn(tab, tab._button.MouseButton1Click:Connect(function() window:_selectTab(tab) playSound(Theme.Sounds.Click) end))
 
-	-- element constructors
 	function tab:CreateButton(o)    return createButton(self, o) end
 	function tab:CreateToggle(o)    return createToggle(self, o) end
 	function tab:CreateInput(o)     return createInput(self, o) end
@@ -1285,41 +810,23 @@ local function createTab(window, name, icon)
 	function tab:CreateLabel(t, c)  return createLabel(self, t, c) end
 	function tab:CreateParagraph(o) return createParagraph(self, o) end
 
-	-- Section: a header label that groups following elements
 	function tab:CreateSection(secName)
 		local sec = { _conns = {} }
-		local holder = create("Frame", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, 0, 0, 28),
-			Parent = self._page,
-		})
+		local holder = create("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), Parent = self._page })
 		local lbl = create("TextLabel", {
-			BackgroundTransparency = 1,
-			Size = UDim2.new(1, -Theme.Padding, 1, 0),
-			Position = UDim2.fromOffset(4, 0),
-			Font = Theme.FontBold,
-			Text = string.upper(tostring(secName or "Section")),
-			TextColor3 = Theme.Accent,
-			TextSize = Theme.LabelSize,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			ZIndex = 3,
-			Parent = holder,
+			BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding, 1, 0), Position = UDim2.fromOffset(4, 0), Font = Theme.FontBold,
+			Text = string.upper(tostring(secName or "Section")), TextColor3 = Theme.Accent, TextSize = Theme.LabelSize,
+			TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = holder,
 		})
+		registerThemed({ inst = lbl, prop = "TextColor3", key = "Accent" })
 		function sec:Set(newName) lbl.Text = string.upper(tostring(newName)) end
 		function sec:Destroy() if holder then holder:Destroy() end end
 		return sec
 	end
 
-	-- Divider: a thin line; :Set(false) hides it
 	function tab:CreateDivider()
 		local div = {}
-		local line = create("Frame", {
-			BackgroundColor3 = Theme.Stroke,
-			BackgroundTransparency = 0.3,
-			Size = UDim2.new(1, -8, 0, 1),
-			Position = UDim2.fromOffset(4, 0),
-			Parent = self._page,
-		})
+		local line = create("Frame", { BackgroundColor3 = Theme.Stroke, BackgroundTransparency = 0.3, Size = UDim2.new(1, -8, 0, 1), Position = UDim2.fromOffset(4, 0), Parent = self._page })
 		function div:Set(visible) line.Visible = visible ~= false end
 		function div:Destroy() if line then line:Destroy() end end
 		return div
@@ -1333,286 +840,138 @@ local function createTab(window, name, icon)
 	end
 
 	table.insert(window._tabs, tab)
-	-- auto-select first tab
 	if #window._tabs == 1 then window:_selectTab(tab) end
 	return tab
 end
 
 --==================================================================================
--- WINDOW  (Nexus:CreateWindow)
---   Draggable, keybind-toggle, mobile show button, drop shadow.
+-- WINDOW
 --==================================================================================
 function Nexus:CreateWindow(options)
 	options = options or {}
-
-	-- toggle key from options
 	if options.ToggleUIKeybind then Nexus.SetToggleKey(options.ToggleUIKeybind) end
-
-	local window = {
-		_conns = {},
-		_tabs = {},
-		_activeTab = nil,
-		_visible = true,
-	}
-
+	local window = { _conns = {}, _tabs = {}, _activeTab = nil, _visible = true }
 	local size = options.Size or UDim2.fromOffset(560, 380)
 
-	-- Root ScreenGui
 	window._screen = create("ScreenGui", {
-		Name = "NexusUI",
-		ResetOnSpawn = false,
-		ZIndexBehavior = Enum.ZIndexBehavior.Global,
-		IgnoreGuiInset = true,
-		DisplayOrder = 999,
+		Name = "NexusUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Global, IgnoreGuiInset = true, DisplayOrder = 999,
 	})
 	pcall(function() window._screen.Parent = getGuiParent() end)
 
-	-- Drop shadow behind the main frame (ZIndex one below).
-	-- Main window frame
 	window._main = create("Frame", {
-		Name = "Main",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = size,
-		BackgroundColor3 = Theme.Background,
-		BackgroundTransparency = Theme.WindowTransparency,
-		ClipsDescendants = true,
-		ZIndex = 1,
-		Parent = window._screen,
+		Name = "Main", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = size,
+		BackgroundColor3 = Theme.Background, BackgroundTransparency = Theme.WindowTransparency, ClipsDescendants = true, ZIndex = 1, Parent = window._screen,
 	})
 	corner(window._main, Theme.Radius)
 	stroke(window._main, Theme.Stroke, 1, 0.2)
 	makeShadow(window._main, window._main, 1)
 
-	-- Topbar
 	local topbar = create("Frame", {
-		Name = "Topbar",
-		Size = UDim2.new(1, 0, 0, Theme.TouchMin + 4),
-		BackgroundColor3 = Theme.Topbar,
-		BackgroundTransparency = Theme.WindowTransparency,
-		ZIndex = 2,
-		Parent = window._main,
+		Name = "Topbar", Size = UDim2.new(1, 0, 0, Theme.TouchMin + 4), BackgroundColor3 = Theme.Topbar, BackgroundTransparency = Theme.WindowTransparency, ZIndex = 2, Parent = window._main,
 	})
 	corner(topbar, Theme.Radius)
-	-- mask bottom corners of topbar
-	create("Frame", {
-		BackgroundColor3 = Theme.Topbar,
-		BackgroundTransparency = Theme.WindowTransparency,
-		Size = UDim2.new(1, 0, 0, 10),
-		Position = UDim2.new(0, 0, 1, -10),
-		BorderSizePixel = 0,
-		ZIndex = 2,
-		Parent = topbar,
-	})
-
+	create("Frame", { BackgroundColor3 = Theme.Topbar, BackgroundTransparency = Theme.WindowTransparency, Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -10), BorderSizePixel = 0, ZIndex = 2, Parent = topbar })
 	create("TextLabel", {
-		Name = "Title",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, -100, 1, 0),
-		Position = UDim2.fromOffset(Theme.Padding, 0),
-		Font = Theme.FontBold,
-		Text = tostring(options.Name or options.Title or "NexusUI"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.TitleSize,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = 3,
-		Parent = topbar,
+		Name = "Title", BackgroundTransparency = 1, Size = UDim2.new(1, -100, 1, 0), Position = UDim2.fromOffset(Theme.Padding, 0), Font = Theme.FontBold,
+		Text = tostring(options.Name or options.Title or "NexusUI"), TextColor3 = Theme.TextColor, TextSize = Theme.TitleSize, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = topbar,
 	})
-
-	-- Always-visible close button (mobile-friendly 44x44 touch target)
 	local closeBtn = create("TextButton", {
-		Name = "Close",
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
-		Size = UDim2.fromOffset(Theme.TouchMin - 8, Theme.TouchMin - 8),
-		BackgroundColor3 = Theme.CardBackground,
-		Font = Theme.FontBold,
-		Text = "✕",
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.BodySize,
-		AutoButtonColor = false,
-		ZIndex = 3,
-		Parent = topbar,
+		Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(Theme.TouchMin - 8, Theme.TouchMin - 8),
+		BackgroundColor3 = Theme.CardBackground, Font = Theme.FontBold, Text = "✕", TextColor3 = Theme.TextColor, TextSize = Theme.BodySize, AutoButtonColor = false, ZIndex = 3, Parent = topbar,
 	})
 	corner(closeBtn, Theme.RadiusSmall)
-	trackConn(window, closeBtn.MouseEnter:Connect(function()
-		Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(200, 60, 60) })
-	end))
-	trackConn(window, closeBtn.MouseLeave:Connect(function()
-		Tween(closeBtn, { BackgroundColor3 = Theme.CardBackground })
-	end))
-	trackConn(window, closeBtn.MouseButton1Click:Connect(function()
-		window:SetVisibility(false)
-	end))
+	trackConn(window, closeBtn.MouseEnter:Connect(function() Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(200, 60, 60) }) end))
+	trackConn(window, closeBtn.MouseLeave:Connect(function() Tween(closeBtn, { BackgroundColor3 = Theme.CardBackground }) end))
+	trackConn(window, closeBtn.MouseButton1Click:Connect(function() window:SetVisibility(false) end))
 
-	-- Sidebar (tab list)
 	local sidebar = create("Frame", {
-		Name = "Sidebar",
-		Position = UDim2.new(0, 0, 0, Theme.TouchMin + 4),
-		Size = UDim2.new(0, 150, 1, -(Theme.TouchMin + 4)),
-		BackgroundColor3 = Theme.Topbar,
-		BackgroundTransparency = 0.3,
-		ZIndex = 2,
-		Parent = window._main,
+		Name = "Sidebar", Position = UDim2.new(0, 0, 0, Theme.TouchMin + 4), Size = UDim2.new(0, 150, 1, -(Theme.TouchMin + 4)), BackgroundColor3 = Theme.Topbar, BackgroundTransparency = 0.3, ZIndex = 2, Parent = window._main,
 	})
-	window._tabList = create("ScrollingFrame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, 0),
-		CanvasSize = UDim2.new(0, 0, 0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 0,
-		ZIndex = 2,
-		Parent = sidebar,
-	})
-	create("UIListLayout", {
-		Padding = UDim.new(0, 4),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		Parent = window._tabList,
-	})
-	create("UIPadding", {
-		PaddingTop = UDim.new(0, Theme.Gap),
-		PaddingLeft = UDim.new(0, Theme.Gap),
-		PaddingRight = UDim.new(0, Theme.Gap),
-		Parent = window._tabList,
-	})
+	window._tabList = create("ScrollingFrame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, 0), CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 0, ZIndex = 2, Parent = sidebar })
+	create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, Parent = window._tabList })
+	create("UIPadding", { PaddingTop = UDim.new(0, Theme.Gap), PaddingLeft = UDim.new(0, Theme.Gap), PaddingRight = UDim.new(0, Theme.Gap), Parent = window._tabList })
 
-	-- Content area
-	window._content = create("Frame", {
-		Name = "Content",
-		Position = UDim2.new(0, 150, 0, Theme.TouchMin + 4),
-		Size = UDim2.new(1, -150, 1, -(Theme.TouchMin + 4)),
-		BackgroundTransparency = 1,
-		ZIndex = 2,
-		Parent = window._main,
-	})
-	create("UIPadding", {
-		PaddingLeft = UDim.new(0, Theme.Gap),
-		PaddingRight = UDim.new(0, Theme.Gap),
-		Parent = window._content,
-	})
+	window._content = create("Frame", { Name = "Content", Position = UDim2.new(0, 150, 0, Theme.TouchMin + 4), Size = UDim2.new(1, -150, 1, -(Theme.TouchMin + 4)), BackgroundTransparency = 1, ZIndex = 2, Parent = window._main })
+	create("UIPadding", { PaddingLeft = UDim.new(0, Theme.Gap), PaddingRight = UDim.new(0, Theme.Gap), Parent = window._content })
 
-	-- Mobile "show" button (hidden until window is hidden)
-	local showBtn = create("TextButton", {
-		Name = "ShowBtn",
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 8, 0.5, 0),
-		Size = UDim2.fromOffset(Theme.TouchMin + 16, Theme.TouchMin),
-		BackgroundColor3 = Theme.Accent,
-		Font = Theme.FontBold,
-		Text = tostring(options.ShowText or "Nexus"),
-		TextColor3 = Theme.TextColor,
-		TextSize = Theme.LabelSize,
-		AutoButtonColor = false,
-		Visible = false,
-		ZIndex = 30,
-		Parent = window._screen,
-	})
-	corner(showBtn, Theme.RadiusSmall)
-	trackConn(window, showBtn.MouseButton1Click:Connect(function()
-		window:SetVisibility(true)
-	end))
-
-	----------------------------------------------------------------------------------
-	-- DRAGGING (clamped to viewport)
-	----------------------------------------------------------------------------------
+	-- Dragging (clamped)
 	local dragging, dragStart, startPos = false, nil, nil
-
 	local function clampToScreen()
 		local vp = Camera and Camera.ViewportSize or Vector2.new(1280, 720)
 		local abs = window._main.AbsoluteSize
 		local px = window._main.Position
-		-- AnchorPoint is center, so half-size margins
 		local halfX, halfY = abs.X / 2, abs.Y / 2
 		local x = math.clamp(px.X.Offset, -((vp.X / 2) - halfX), (vp.X / 2) - halfX)
 		local y = math.clamp(px.Y.Offset, -((vp.Y / 2) - halfY), (vp.Y / 2) - halfY)
 		window._main.Position = UDim2.new(0.5, x, 0.5, y)
 	end
-
 	trackConn(window, topbar.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = window._main.Position
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true dragStart = input.Position startPos = window._main.Position
 		end
 	end))
-
 	trackConn(window, UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
-			or input.UserInputType == Enum.UserInputType.Touch) then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
-			window._main.Position = UDim2.new(
-				startPos.X.Scale, startPos.X.Offset + delta.X,
-				startPos.Y.Scale, startPos.Y.Offset + delta.Y
-			)
+			window._main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 			clampToScreen()
 		end
 	end))
-
 	trackConn(window, UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = false
-		end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
 	end))
 
-	----------------------------------------------------------------------------------
-	-- KEYBIND TOGGLE
-	----------------------------------------------------------------------------------
+	-- Keybind toggle
 	trackConn(window, UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
-		if input.UserInputType == Enum.UserInputType.Keyboard
-			and input.KeyCode == Nexus.ToggleKey then
+		if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Nexus.ToggleKey then
 			window:SetVisibility(not window._visible)
 		end
 	end))
 
-	----------------------------------------------------------------------------------
-	-- WINDOW METHODS
-	----------------------------------------------------------------------------------
 	function window:_selectTab(tab)
 		for _, t in ipairs(self._tabs) do
 			t._page.Visible = false
 			Tween(t._button, { BackgroundTransparency = 1, TextColor3 = Theme.SubTextColor })
 		end
 		tab._page.Visible = true
-		Tween(tab._button, { BackgroundTransparency = 0.15, TextColor3 = Theme.TextColor })
 		tab._button.BackgroundColor3 = Theme.CardBackground
+		Tween(tab._button, { BackgroundTransparency = 0.15, TextColor3 = Theme.TextColor })
 		self._activeTab = tab
 	end
-
-	function window:CreateTab(name, icon)
-		return createTab(self, name, icon)
-	end
+	function window:CreateTab(name, icon) return createTab(self, name, icon) end
 
 	function window:SetVisibility(state)
-		self._visible = state and true or false
-		self._main.Visible = self._visible
-		showBtn.Visible = not self._visible
-		if self._visible then
-			self._main.Size = size
+		state = state and true or false
+		if state == self._visible and self._main.Visible == state then return end
+		self._visible = state
+		if state then
+			self._main.Visible = true
+			self._main.Size = UDim2.fromOffset(size.X.Offset, 0)
+			Tween(self._main, { Size = size }, 0.25, Enum.EasingStyle.Quint)
+		else
+			local t = Tween(self._main, { Size = UDim2.fromOffset(size.X.Offset, 0) }, 0.2, Enum.EasingStyle.Quint)
+			if t then t.Completed:Once(function() if not self._visible then self._main.Visible = false end end)
+			else self._main.Visible = false end
+			Nexus:Notify({ Title = "UI Hidden", Content = "Press " .. Nexus.ToggleKey.Name .. " to reopen.", Duration = 4 })
 		end
 	end
-
 	function window:IsVisible() return self._visible end
 
-	-- live theme swap (limited: re-applies key colors to existing frames)
 	function window:ModifyTheme(overrides)
 		if type(overrides) == "table" then Nexus.SetTheme(overrides) end
+		Nexus.RefreshTheme()
 		pcall(function()
 			window._main.BackgroundColor3 = Theme.Background
 			topbar.BackgroundColor3 = Theme.Topbar
 		end)
 	end
-
 	function window:Notify(o) Nexus:Notify(o) end
 
 	function window:Destroy()
 		disconnectAll(self)
 		for _, t in ipairs(self._tabs) do pcall(function() t:Destroy() end) end
-		for i, w in ipairs(Nexus._windows) do
-			if w == self then table.remove(Nexus._windows, i) break end
-		end
+		for i, w in ipairs(Nexus._windows) do if w == self then table.remove(Nexus._windows, i) break end end
 		if self._screen then pcall(function() self._screen:Destroy() end) end
 	end
 
@@ -1627,25 +986,12 @@ end
 --==================================================================================
 -- TOP-LEVEL CONVENIENCE
 --==================================================================================
-
--- Global visibility / destroy across all windows (Rayfield-style).
-function Nexus:SetVisibility(state)
-	for _, w in ipairs(Nexus._windows) do w:SetVisibility(state) end
-end
-
-function Nexus:IsVisible()
-	return Nexus._windows[1] and Nexus._windows[1]:IsVisible() or false
-end
-
+function Nexus:SetVisibility(state) for _, w in ipairs(Nexus._windows) do w:SetVisibility(state) end end
+function Nexus:IsVisible() return Nexus._windows[1] and Nexus._windows[1]:IsVisible() or false end
 function Nexus:Destroy()
-	for i = #Nexus._windows, 1, -1 do
-		pcall(function() Nexus._windows[i]:Destroy() end)
-	end
+	for i = #Nexus._windows, 1, -1 do pcall(function() Nexus._windows[i]:Destroy() end) end
 	if NotifyHolder then pcall(function() NotifyHolder:Destroy() end) NotifyHolder = nil end
 end
-
--- LoadConfiguration / SaveConfiguration are stubbed (no datastore in loadstring ctx).
--- Reads/writes happen via Nexus.Flags["FlagName"].CurrentValue.
 function Nexus:LoadConfiguration() end
 function Nexus:SaveConfiguration() end
 
