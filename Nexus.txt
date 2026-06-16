@@ -135,6 +135,46 @@ local function makeShadow(card, parent, zindex)
 	return shadow
 end
 
+-- Vector "X" icon (two crossed bars) — used for the close button.
+local function makeXIcon(parent, color, zindex, sizePx)
+	local z = (zindex or 3) + 1
+	local holder = create("Frame", {
+		Name = "XIcon", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(sizePx or 13, sizePx or 13), ZIndex = z, Parent = parent,
+	})
+	local bars = {}
+	for _, rot in ipairs({ 45, -45 }) do
+		local bar = create("Frame", {
+			BackgroundColor3 = color or Theme.TextColor, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, 0, 0, 2), Rotation = rot, ZIndex = z, Parent = holder,
+		})
+		corner(bar, UDim.new(1, 0))
+		table.insert(bars, bar)
+	end
+	return holder, bars
+end
+
+-- Vector chevron pointing DOWN (rotate the holder 180° to point up).
+local function makeChevron(parent, color, zindex)
+	local z = (zindex or 3) + 1
+	local holder = create("Frame", {
+		Name = "ChevIcon", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(14, 12), ZIndex = z, Parent = parent,
+	})
+	local c = color or Theme.SubTextColor
+	local L = create("Frame", {
+		BackgroundColor3 = c, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.30, 0, 0.42, 0), Size = UDim2.fromOffset(9, 2), Rotation = 45, ZIndex = z, Parent = holder,
+	})
+	corner(L, UDim.new(1, 0))
+	local R = create("Frame", {
+		BackgroundColor3 = c, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.70, 0, 0.42, 0), Size = UDim2.fromOffset(9, 2), Rotation = -45, ZIndex = z, Parent = holder,
+	})
+	corner(R, UDim.new(1, 0))
+	return holder, { L, R }
+end
+
 local function playSound(id)
 	if not id or id == 0 then return end
 	local ok, sound = pcall(function()
@@ -264,6 +304,13 @@ end
 
 function Nexus:Notify(options)
 	options = options or {}
+	-- Tagged notifications are rate-limited: a new one with the same tag is skipped
+	-- until the previous one has disappeared.
+	Nexus._activeTags = Nexus._activeTags or {}
+	if options.Tag then
+		if Nexus._activeTags[options.Tag] then return end
+		Nexus._activeTags[options.Tag] = true
+	end
 	local screen = (Nexus._windows[1] and Nexus._windows[1]._screen) or getGuiParent()
 	local holder = ensureNotifyHolder(screen)
 
@@ -291,6 +338,10 @@ function Nexus:Notify(options)
 			TextColor3 = Theme.SubTextColor, TextSize = Theme.LabelSize, TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 31, Parent = card,
 		})
+	end
+
+	if options.Tag then
+		card.Destroying:Connect(function() Nexus._activeTags[options.Tag] = nil end)
 	end
 
 	Tween(card, { BackgroundTransparency = Theme.CardTransparency }, 0.2)
@@ -514,15 +565,22 @@ local function createSlider(tab, options)
 	corner(knob, UDim.new(1, 0))
 	local dragging = false
 
-	local function setFromAlpha(alpha, fireCallback)
+	local function valueFromAlpha(alpha)
 		alpha = math.clamp(alpha, 0, 1)
 		local raw = minV + (maxV - minV) * alpha
-		local stepped = math.clamp(math.floor((raw / increment) + 0.5) * increment, minV, maxV)
+		return math.clamp(math.floor((raw / increment) + 0.5) * increment, minV, maxV)
+	end
+	local function alphaForValue(v) return (v - minV) / (maxV - minV) end
+	-- visual only. instant=true follows the finger 1:1; instant=false lerps (snap-to-grid on release)
+	local function renderVisual(alpha, instant)
+		alpha = math.clamp(alpha, 0, 1)
+		if instant then fill.Size = UDim2.new(alpha, 0, 1, 0)
+		else Tween(fill, { Size = UDim2.new(alpha, 0, 1, 0) }, 0.18, Enum.EasingStyle.Quint) end
+	end
+	local function applyValue(stepped, fire)
 		obj.CurrentValue = stepped
-		local renderAlpha = (stepped - minV) / (maxV - minV)
-		Tween(fill, { Size = UDim2.new(renderAlpha, 0, 1, 0) }, 0.05)
 		valueLabel.Text = tostring(stepped) .. suffix
-		if fireCallback and stepped ~= lastFired then
+		if fire and stepped ~= lastFired then
 			lastFired = stepped
 			if type(options.Callback) == "function" then task.spawn(options.Callback, stepped) end
 		end
@@ -535,20 +593,31 @@ local function createSlider(tab, options)
 		if obj._disabled then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
-			setFromAlpha(inputToAlpha(input), true)
+			local a = inputToAlpha(input)
+			renderVisual(a, true)                -- knob tracks the finger exactly
+			applyValue(valueFromAlpha(a), true)  -- reported value stays on the grid
 		end
 	end))
 	trackConn(obj, UserInputService.InputChanged:Connect(function(input)
 		if dragging and not obj._disabled and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			setFromAlpha(inputToAlpha(input), true)
+			local a = inputToAlpha(input)
+			renderVisual(a, true)
+			applyValue(valueFromAlpha(a), true)
 		end
 	end))
 	trackConn(obj, UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragging = false end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			if dragging then
+				dragging = false
+				renderVisual(alphaForValue(obj.CurrentValue), false)  -- lerp back to the nearest grid step
+			end
+		end
 	end))
 	function obj:Set(value)
 		lastFired = nil
-		setFromAlpha((math.clamp(value, minV, maxV) - minV) / (maxV - minV), true)
+		local stepped = valueFromAlpha(alphaForValue(math.clamp(value, minV, maxV)))
+		applyValue(stepped, true)
+		renderVisual(alphaForValue(stepped), false)
 	end
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
@@ -584,11 +653,11 @@ local function createDropdown(tab, options)
 		TextColor3 = Theme.SubTextColor, TextSize = Theme.LabelSize, TextXAlignment = Enum.TextXAlignment.Right,
 		TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3, Parent = obj._holder,
 	})
-	local arrow = create("TextLabel", {
-		BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(20, Theme.ElementHeight),
-		Position = UDim2.new(1, -Theme.Padding, 0, 0), Font = Theme.FontBold, Text = "▾", TextColor3 = Theme.SubTextColor,
-		TextSize = Theme.LabelSize, ZIndex = 3, Parent = obj._holder,
+	local arrow = create("Frame", {
+		Name = "Arrow", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(20, Theme.ElementHeight),
+		Position = UDim2.new(1, -Theme.Padding, 0, 0), ZIndex = 3, Parent = obj._holder,
 	})
+	makeChevron(arrow, Theme.SubTextColor, 3)
 
 	obj._holder.ClipsDescendants = true
 	local listFrame = create("Frame", {
@@ -634,7 +703,7 @@ local function createDropdown(tab, options)
 				buildOptions()
 				refreshSelectedText()
 				if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentOption) end
-				if not multi then open = false setHeight(true) Tween(arrow, { Rotation = 0 }) end
+				-- stays open after a pick; click the bar (or pick again) to toggle/change
 			end)
 			table.insert(optionButtons, row)
 		end
@@ -852,6 +921,7 @@ function Nexus:CreateWindow(options)
 	if options.ToggleUIKeybind then Nexus.SetToggleKey(options.ToggleUIKeybind) end
 	local window = { _conns = {}, _tabs = {}, _activeTab = nil, _visible = true }
 	local size = options.Size or UDim2.fromOffset(560, 380)
+	window._size = size
 
 	window._screen = create("ScreenGui", {
 		Name = "NexusUI", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Global, IgnoreGuiInset = true, DisplayOrder = 999,
@@ -877,9 +947,10 @@ function Nexus:CreateWindow(options)
 	})
 	local closeBtn = create("TextButton", {
 		Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(Theme.TouchMin - 8, Theme.TouchMin - 8),
-		BackgroundColor3 = Theme.CardBackground, Font = Theme.FontBold, Text = "✕", TextColor3 = Theme.TextColor, TextSize = Theme.BodySize, AutoButtonColor = false, ZIndex = 3, Parent = topbar,
+		BackgroundColor3 = Theme.CardBackground, Text = "", AutoButtonColor = false, ZIndex = 3, Parent = topbar,
 	})
 	corner(closeBtn, Theme.RadiusSmall)
+	makeXIcon(closeBtn, Theme.TextColor, 3)
 	trackConn(window, closeBtn.MouseEnter:Connect(function() Tween(closeBtn, { BackgroundColor3 = Color3.fromRGB(200, 60, 60) }) end))
 	trackConn(window, closeBtn.MouseLeave:Connect(function() Tween(closeBtn, { BackgroundColor3 = Theme.CardBackground }) end))
 	trackConn(window, closeBtn.MouseButton1Click:Connect(function() window:SetVisibility(false) end))
@@ -893,6 +964,45 @@ function Nexus:CreateWindow(options)
 
 	window._content = create("Frame", { Name = "Content", Position = UDim2.new(0, 150, 0, Theme.TouchMin + 4), Size = UDim2.new(1, -150, 1, -(Theme.TouchMin + 4)), BackgroundTransparency = 1, ZIndex = 2, Parent = window._main })
 	create("UIPadding", { PaddingLeft = UDim.new(0, Theme.Gap), PaddingRight = UDim.new(0, Theme.Gap), Parent = window._content })
+
+	-- Resize grip (bottom-right). Set Resizable = false in CreateWindow to disable while developing.
+	if options.Resizable ~= false then
+		local MIN_W = options.MinSize and options.MinSize.X.Offset or 320
+		local MIN_H = options.MinSize and options.MinSize.Y.Offset or 240
+		local grip = create("Frame", {
+			Name = "ResizeGrip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -3, 1, -3),
+			Size = UDim2.fromOffset(14, 14), BackgroundColor3 = Theme.TextColor, BackgroundTransparency = 1, ZIndex = 6, Parent = window._main,
+		})
+		corner(grip, Theme.RadiusSmall)
+		local hot = create("TextButton", { BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Size = UDim2.fromScale(1, 1), ZIndex = 7, Parent = grip })
+		local resizing, hovering, rStart, startAbs = false, false, nil, nil
+		trackConn(window, hot.MouseEnter:Connect(function() hovering = true Tween(grip, { BackgroundTransparency = 0.25 }) end))
+		trackConn(window, hot.MouseLeave:Connect(function() hovering = false if not resizing then Tween(grip, { BackgroundTransparency = 1 }) end end))
+		trackConn(window, hot.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				resizing = true rStart = input.Position startAbs = window._main.AbsoluteSize
+			end
+		end))
+		trackConn(window, UserInputService.InputChanged:Connect(function(input)
+			if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+				local vp = Camera and Camera.ViewportSize or Vector2.new(1280, 720)
+				local newW = math.clamp(startAbs.X + (input.Position.X - rStart.X), MIN_W, vp.X - 20)
+				local newH = math.clamp(startAbs.Y + (input.Position.Y - rStart.Y), MIN_H, vp.Y - 20)
+				local oldAbs = window._main.AbsoluteSize
+				window._main.Size = UDim2.fromOffset(newW, newH)
+				window._size = window._main.Size
+				-- keep the top-left corner anchored while the centre-anchored frame grows
+				local p = window._main.Position
+				window._main.Position = UDim2.new(p.X.Scale, p.X.Offset + (newW - oldAbs.X) / 2, p.Y.Scale, p.Y.Offset + (newH - oldAbs.Y) / 2)
+			end
+		end))
+		trackConn(window, UserInputService.InputEnded:Connect(function(input)
+			if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and resizing then
+				resizing = false
+				if not hovering then Tween(grip, { BackgroundTransparency = 1 }) end
+			end
+		end))
+	end
 
 	-- Dragging (clamped)
 	local dragging, dragStart, startPos = false, nil, nil
@@ -947,13 +1057,13 @@ function Nexus:CreateWindow(options)
 		self._visible = state
 		if state then
 			self._main.Visible = true
-			self._main.Size = UDim2.fromOffset(size.X.Offset, 0)
-			Tween(self._main, { Size = size }, 0.25, Enum.EasingStyle.Quint)
+			self._main.Size = UDim2.fromOffset(self._size.X.Offset, 0)
+			Tween(self._main, { Size = self._size }, 0.25, Enum.EasingStyle.Quint)
 		else
-			local t = Tween(self._main, { Size = UDim2.fromOffset(size.X.Offset, 0) }, 0.2, Enum.EasingStyle.Quint)
+			local t = Tween(self._main, { Size = UDim2.fromOffset(self._size.X.Offset, 0) }, 0.2, Enum.EasingStyle.Quint)
 			if t then t.Completed:Once(function() if not self._visible then self._main.Visible = false end end)
 			else self._main.Visible = false end
-			Nexus:Notify({ Title = "UI Hidden", Content = "Press " .. Nexus.ToggleKey.Name .. " to reopen.", Duration = 4 })
+			Nexus:Notify({ Title = "UI Hidden", Content = "Press " .. Nexus.ToggleKey.Name .. " to reopen.", Duration = 4, Tag = "UIHidden" })
 		end
 	end
 	function window:IsVisible() return self._visible end
