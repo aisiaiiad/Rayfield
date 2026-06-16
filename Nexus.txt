@@ -228,6 +228,162 @@ function Nexus.RefreshTheme()
 end
 
 --==================================================================================
+-- CONFIG PERSISTENCE  (compact, obfuscated: length-packed -> XOR -> base64)
+--   Stores every flagged element's value. Not human-readable in a text editor,
+--   but cheap to read/write. Enable via CreateWindow ConfigurationSaving = {...}.
+--==================================================================================
+Nexus._config = { enabled = false, folder = nil, file = "Config", loading = false, _pending = false }
+
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function b64encode(data)
+	return ((data:gsub(".", function(x)
+		local r, b = "", x:byte()
+		for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and "1" or "0") end
+		return r
+	end) .. "0000"):gsub("%d%d%d?%d?%d?%d?", function(x)
+		if #x < 6 then return "" end
+		local c = 0
+		for i = 1, 6 do c = c + (x:sub(i, i) == "1" and 2 ^ (6 - i) or 0) end
+		return B64:sub(c + 1, c + 1)
+	end) .. ({ "", "==", "=" })[#data % 3 + 1])
+end
+local function b64decode(data)
+	data = data:gsub("[^" .. B64 .. "=]", "")
+	return (data:gsub(".", function(x)
+		if x == "=" then return "" end
+		local r, f = "", (B64:find(x) - 1)
+		for i = 6, 1, -1 do r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and "1" or "0") end
+		return r
+	end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
+		if #x ~= 8 then return "" end
+		local c = 0
+		for i = 1, 8 do c = c + (x:sub(i, i) == "1" and 2 ^ (8 - i) or 0) end
+		return string.char(c)
+	end))
+end
+
+local XKEY = "NexusUI::cfg::v1"
+local function xorCipher(s)
+	local out = {}
+	for i = 1, #s do
+		out[i] = string.char(bit32.bxor(s:byte(i), XKEY:byte((i - 1) % #XKEY + 1)))
+	end
+	return table.concat(out)
+end
+
+local function packStr(s) s = tostring(s) return tostring(#s) .. "|" .. s end
+local function readStr(s, i)
+	local bar = s:find("|", i, true)
+	if not bar then return nil end
+	local len = tonumber(s:sub(i, bar - 1))
+	if not len then return nil end
+	local start = bar + 1
+	return s:sub(start, start + len - 1), start + len
+end
+
+local function serializeFlags()
+	local parts = {}
+	for flag, e in pairs(Nexus.Flags) do
+		local val = e.CurrentOption or e.CurrentValue
+		local rec
+		if type(val) == "boolean" then
+			rec = packStr(flag) .. "b" .. (val and "1" or "0")
+		elseif type(val) == "number" then
+			rec = packStr(flag) .. "n" .. packStr(tostring(val))
+		elseif typeof(val) == "Color3" then
+			rec = packStr(flag) .. "c" .. packStr(math.floor(val.R * 255 + 0.5) .. "," .. math.floor(val.G * 255 + 0.5) .. "," .. math.floor(val.B * 255 + 0.5))
+		elseif type(val) == "table" then
+			local inner = { packStr(tostring(#val)) }
+			for _, item in ipairs(val) do inner[#inner + 1] = packStr(item) end
+			rec = packStr(flag) .. "t" .. table.concat(inner)
+		elseif type(val) == "string" then
+			rec = packStr(flag) .. "s" .. packStr(val)
+		end
+		if rec then parts[#parts + 1] = rec end
+	end
+	return "NX1" .. table.concat(parts)
+end
+
+local function deserialize(blob)
+	if type(blob) ~= "string" or blob:sub(1, 3) ~= "NX1" then return {} end
+	local body, i, result = blob:sub(4), 1, {}
+	while i <= #body do
+		local flag, ni = readStr(body, i)
+		if not flag then break end
+		i = ni
+		local t = body:sub(i, i); i = i + 1
+		if t == "b" then
+			result[flag] = body:sub(i, i) == "1"; i = i + 1
+		elseif t == "n" then
+			local sv; sv, i = readStr(body, i); result[flag] = tonumber(sv)
+		elseif t == "s" then
+			result[flag], i = readStr(body, i)
+		elseif t == "c" then
+			local sv; sv, i = readStr(body, i)
+			local r, g, b = sv:match("(%d+),(%d+),(%d+)")
+			if r then result[flag] = Color3.fromRGB(tonumber(r), tonumber(g), tonumber(b)) end
+		elseif t == "t" then
+			local cs; cs, i = readStr(body, i)
+			local list = {}
+			for _ = 1, tonumber(cs) or 0 do local it; it, i = readStr(body, i); list[#list + 1] = it end
+			result[flag] = list
+		else
+			break
+		end
+	end
+	return result
+end
+
+local function fsAvailable()
+	return type(writefile) == "function" and type(readfile) == "function" and type(isfile) == "function"
+end
+local function configPath()
+	local folder, file = Nexus._config.folder, Nexus._config.file or "Config"
+	local path = file .. ".nxc"
+	if folder and folder ~= "" then path = folder .. "/" .. path end
+	return path, folder
+end
+
+function Nexus:SaveConfiguration()
+	if not Nexus._config.enabled or not fsAvailable() then return false end
+	local enc = b64encode(xorCipher(serializeFlags()))
+	local path, folder = configPath()
+	return (pcall(function()
+		if folder and folder ~= "" and type(makefolder) == "function" and type(isfolder) == "function" and not isfolder(folder) then
+			makefolder(folder)
+		end
+		writefile(path, enc)
+	end))
+end
+
+function Nexus:LoadConfiguration()
+	if not Nexus._config.enabled or not fsAvailable() then return false end
+	local path = configPath()
+	local ok, content = pcall(function() if isfile(path) then return readfile(path) end end)
+	if not ok or not content then return false end
+	local decoded
+	if not pcall(function() decoded = deserialize(xorCipher(b64decode(content))) end) or not decoded then return false end
+	Nexus._config.loading = true
+	for flag, val in pairs(decoded) do
+		local e = Nexus.Flags[flag]
+		if e and e.Set then pcall(function() e:Set(val) end) end
+	end
+	Nexus._config.loading = false
+	return true
+end
+
+-- Debounced autosave; elements call this after a value change.
+function Nexus._scheduleSave()
+	local cfg = Nexus._config
+	if not cfg.enabled or cfg.loading or cfg._pending then return end
+	cfg._pending = true
+	task.delay(1, function()
+		cfg._pending = false
+		Nexus:SaveConfiguration()
+	end)
+end
+
+--==================================================================================
 -- GENERIC HOVER / PRESS STATES
 --==================================================================================
 local function bindStates(obj, frame, opts)
@@ -458,6 +614,7 @@ local function createToggle(tab, options)
 		obj.CurrentValue = value and true or false
 		render()
 		if not skipCallback and type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentValue) end
+		Nexus._scheduleSave()
 	end
 	trackConn(obj, obj._holder.InputBegan:Connect(function(input)
 		if obj._disabled then return end
@@ -512,6 +669,7 @@ local function createInput(tab, options)
 		obj.CurrentValue = input.Text
 		if type(options.Callback) == "function" then task.spawn(options.Callback, input.Text) end
 		if options.RemoveTextAfterFocusLost then input.Text = "" obj.CurrentValue = "" end
+		Nexus._scheduleSave()
 	end))
 	function obj:Set(text) obj.CurrentValue = tostring(text) input.Text = obj.CurrentValue end
 	function obj:SetDisabled(state)
@@ -583,6 +741,7 @@ local function createSlider(tab, options)
 		if fire and stepped ~= lastFired then
 			lastFired = stepped
 			if type(options.Callback) == "function" then task.spawn(options.Callback, stepped) end
+			Nexus._scheduleSave()
 		end
 	end
 	local function inputToAlpha(input)
@@ -695,14 +854,26 @@ local function createDropdown(tab, options)
 			row.MouseLeave:Connect(function() if not isSelected(name) then Tween(row, { BackgroundColor3 = Theme.Background }) end end)
 			row.MouseButton1Click:Connect(function()
 				playSound(Theme.Sounds.Click)
+				local changed = false
 				if multi then
+					-- toggling always changes the selection
 					if isSelected(name) then
 						for j, v in ipairs(obj.CurrentOption) do if v == name then table.remove(obj.CurrentOption, j) break end end
 					else table.insert(obj.CurrentOption, name) end
-				else obj.CurrentOption = { name } end
-				buildOptions()
-				refreshSelectedText()
-				if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentOption) end
+					changed = true
+				else
+					-- single-select: re-clicking the current option is a no-op (no callback)
+					if not (#obj.CurrentOption == 1 and obj.CurrentOption[1] == name) then
+						obj.CurrentOption = { name }
+						changed = true
+					end
+				end
+				if changed then
+					buildOptions()
+					refreshSelectedText()
+					if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentOption) end
+					Nexus._scheduleSave()
+				end
 				-- stays open after a pick; click the bar (or pick again) to toggle/change
 			end)
 			table.insert(optionButtons, row)
@@ -740,6 +911,7 @@ local function createDropdown(tab, options)
 		buildOptions()
 		refreshSelectedText()
 		if type(options.Callback) == "function" then task.spawn(options.Callback, obj.CurrentOption) end
+		Nexus._scheduleSave()
 	end
 	function obj:SetDisabled(state)
 		obj._disabled = state and true or false
@@ -784,6 +956,7 @@ local function createKeybind(tab, options)
 			listening = false
 			obj.CurrentKeybind = input.KeyCode.Name obj.CurrentValue = obj.CurrentKeybind
 			keyBox.Text = obj.CurrentKeybind Tween(keyBox, { BackgroundColor3 = Theme.Background })
+			Nexus._scheduleSave()
 			return
 		end
 		if gpe then return end
@@ -797,6 +970,149 @@ local function createKeybind(tab, options)
 		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
 	end
 	registerThemed({ inst = keyBox, prop = "TextColor3", key = "Accent" })
+	registerFlag(obj, options.Flag)
+	attachDestroy(obj, tab)
+	return obj
+end
+
+--==================================================================================
+-- COLOR PICKER  (HSV: saturation/value square + hue bar, expands inline)
+--   { Name=, Color=Color3, Flag=, Callback=function(color) }  -> :Set(Color3)
+--==================================================================================
+local function createColorPicker(tab, options)
+	options = options or {}
+	local obj = newElement(tab)
+	local startColor = options.Color or options.CurrentValue or Color3.fromRGB(255, 255, 255)
+	obj.CurrentValue = startColor
+	local h, s, v = Color3.toHSV(startColor)
+
+	create("TextLabel", {
+		BackgroundTransparency = 1, Size = UDim2.new(1, -Theme.Padding * 2 - 56, 0, Theme.ElementHeight), Position = UDim2.fromOffset(Theme.Padding, 0),
+		Font = Theme.FontMedium, Text = tostring(options.Name or "Color"), TextColor3 = Theme.TextColor, TextSize = Theme.BodySize,
+		TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3, Parent = obj._holder,
+	})
+	local swatch = create("TextButton", {
+		Name = "Swatch", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -Theme.Padding, 0, (Theme.ElementHeight - (Theme.TouchMin - 18)) / 2),
+		Size = UDim2.fromOffset(44, Theme.TouchMin - 18), BackgroundColor3 = startColor, Text = "", AutoButtonColor = false, ZIndex = 3, Parent = obj._holder,
+	})
+	corner(swatch, Theme.RadiusSmall)
+	stroke(swatch, Theme.Stroke, 1, 0)
+
+	obj._holder.ClipsDescendants = true
+	local SV = 104       -- saturation/value square size
+	local PICK_TOP = Theme.ElementHeight + 6
+
+	-- Saturation/Value square
+	local svFrame = create("Frame", {
+		Name = "SV", Position = UDim2.fromOffset(Theme.Padding, PICK_TOP), Size = UDim2.fromOffset(SV, SV),
+		BackgroundColor3 = Color3.fromHSV(h, 1, 1), ClipsDescendants = true, ZIndex = 10, Parent = obj._holder,
+	})
+	corner(svFrame, Theme.RadiusSmall)
+	local whiteO = create("Frame", { BackgroundColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = svFrame })
+	create("UIGradient", { Transparency = NumberSequence.new(0, 1), Parent = whiteO })  -- white (left) -> clear (right)
+	corner(whiteO, Theme.RadiusSmall)
+	local blackO = create("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 10, Parent = svFrame })
+	create("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(1, 0), Parent = blackO })  -- clear (top) -> black (bottom)
+	corner(blackO, Theme.RadiusSmall)
+	local svDot = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(10, 10), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 11, Parent = svFrame,
+	})
+	corner(svDot, UDim.new(1, 0))
+	stroke(svDot, Color3.new(0, 0, 0), 1.5, 0.2)
+
+	-- Hue bar
+	local hueBar = create("Frame", {
+		Name = "Hue", Position = UDim2.fromOffset(Theme.Padding + SV + 10, PICK_TOP), Size = UDim2.fromOffset(16, SV), ZIndex = 10, Parent = obj._holder,
+	})
+	corner(hueBar, Theme.RadiusSmall)
+	create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0.00, Color3.fromHSV(0.00, 1, 1)),
+			ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
+			ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+			ColorSequenceKeypoint.new(0.50, Color3.fromHSV(0.50, 1, 1)),
+			ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
+			ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+			ColorSequenceKeypoint.new(1.00, Color3.fromHSV(1.00, 1, 1)),
+		}),
+		Parent = hueBar,
+	})
+	local hueDot = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, h, 0), Size = UDim2.new(1, 4, 0, 3),
+		BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 11, Parent = hueBar,
+	})
+	corner(hueDot, UDim.new(1, 0))
+	stroke(hueDot, Color3.new(0, 0, 0), 1, 0.3)
+
+	local open = false
+	local function setHeight(animate)
+		local target = open and UDim2.new(1, 0, 0, PICK_TOP + SV + 8) or UDim2.new(1, 0, 0, Theme.ElementHeight)
+		if animate then Tween(obj._holder, { Size = target }, 0.18, Enum.EasingStyle.Quint) else obj._holder.Size = target end
+	end
+
+	local function render(fire)
+		local col = Color3.fromHSV(h, s, v)
+		obj.CurrentValue = col
+		swatch.BackgroundColor3 = col
+		svFrame.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
+		svDot.Position = UDim2.new(s, 0, 1 - v, 0)
+		hueDot.Position = UDim2.new(0.5, 0, h, 0)
+		if fire then
+			if type(options.Callback) == "function" then task.spawn(options.Callback, col) end
+			Nexus._scheduleSave()
+		end
+	end
+	render(false)
+
+	-- dragging the SV square / hue bar
+	local dragSV, dragHue = false, false
+	local function updateSV(input)
+		local rel = (input.Position.X - svFrame.AbsolutePosition.X) / svFrame.AbsoluteSize.X
+		local rely = (input.Position.Y - svFrame.AbsolutePosition.Y) / svFrame.AbsoluteSize.Y
+		s = math.clamp(rel, 0, 1)
+		v = 1 - math.clamp(rely, 0, 1)
+		render(true)
+	end
+	local function updateHue(input)
+		h = math.clamp((input.Position.Y - hueBar.AbsolutePosition.Y) / hueBar.AbsoluteSize.Y, 0, 1)
+		render(true)
+	end
+
+	trackConn(obj, svFrame.InputBegan:Connect(function(input)
+		if obj._disabled then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragSV = true updateSV(input) end
+	end))
+	trackConn(obj, hueBar.InputBegan:Connect(function(input)
+		if obj._disabled then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragHue = true updateHue(input) end
+	end))
+	trackConn(obj, UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			if dragSV then updateSV(input) elseif dragHue then updateHue(input) end
+		end
+	end))
+	trackConn(obj, UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then dragSV = false dragHue = false end
+	end))
+
+	trackConn(obj, swatch.MouseButton1Click:Connect(function()
+		if obj._disabled then return end
+		open = not open
+		setHeight(true)
+		playSound(Theme.Sounds.Click)
+	end))
+
+	function obj:Set(color)
+		if typeof(color) ~= "Color3" then return end
+		h, s, v = Color3.toHSV(color)
+		render(true)
+	end
+	function obj:SetDisabled(state)
+		obj._disabled = state and true or false
+		Tween(obj._holder, { BackgroundTransparency = state and Theme.DisabledTransparency or Theme.CardTransparency })
+	end
+
 	registerFlag(obj, options.Flag)
 	attachDestroy(obj, tab)
 	return obj
@@ -876,6 +1192,7 @@ local function createTab(window, name, icon)
 	function tab:CreateSlider(o)    return createSlider(self, o) end
 	function tab:CreateDropdown(o)  return createDropdown(self, o) end
 	function tab:CreateKeybind(o)   return createKeybind(self, o) end
+	function tab:CreateColorPicker(o) return createColorPicker(self, o) end
 	function tab:CreateLabel(t, c)  return createLabel(self, t, c) end
 	function tab:CreateParagraph(o) return createParagraph(self, o) end
 
@@ -919,6 +1236,11 @@ end
 function Nexus:CreateWindow(options)
 	options = options or {}
 	if options.ToggleUIKeybind then Nexus.SetToggleKey(options.ToggleUIKeybind) end
+	if options.ConfigurationSaving and options.ConfigurationSaving.Enabled then
+		Nexus._config.enabled = true
+		Nexus._config.folder = options.ConfigurationSaving.FolderName
+		Nexus._config.file = options.ConfigurationSaving.FileName or "Config"
+	end
 	local window = { _conns = {}, _tabs = {}, _activeTab = nil, _visible = true }
 	local size = options.Size or UDim2.fromOffset(560, 380)
 	window._size = size
@@ -964,59 +1286,6 @@ function Nexus:CreateWindow(options)
 
 	window._content = create("Frame", { Name = "Content", Position = UDim2.new(0, 150, 0, Theme.TouchMin + 4), Size = UDim2.new(1, -150, 1, -(Theme.TouchMin + 4)), BackgroundTransparency = 1, ZIndex = 2, Parent = window._main })
 	create("UIPadding", { PaddingLeft = UDim.new(0, Theme.Gap), PaddingRight = UDim.new(0, Theme.Gap), Parent = window._content })
-
-	-- Resize grip (bottom-right). Set Resizable = false in CreateWindow to disable while developing.
-	if options.Resizable ~= false then
-		local MIN_W = options.MinSize and options.MinSize.X.Offset or 320
-		local MIN_H = options.MinSize and options.MinSize.Y.Offset or 240
-
-		-- Large invisible grab zone so it's easy to land on.
-		local hot = create("TextButton", {
-			Name = "ResizeGrip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1),
-			Size = UDim2.fromOffset(24, 24), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 8, Parent = window._main,
-		})
-		-- Visible affordance: two diagonal lines, always faintly shown, brighter on hover.
-		local lines = {}
-		for _, spec in ipairs({ { 12, 7 }, { 7, 12 } }) do
-			local line = create("Frame", {
-				BackgroundColor3 = Theme.SubTextColor, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 1),
-				Position = UDim2.new(1, -4, 1, -4), Size = UDim2.fromOffset(spec[1], 2), Rotation = -45, BackgroundTransparency = 0.55, ZIndex = 8, Parent = hot,
-			})
-			-- second line offset further into the corner
-			if spec[2] == 12 then line.Position = UDim2.new(1, -4, 1, -9) end
-			corner(line, UDim.new(1, 0))
-			table.insert(lines, line)
-		end
-		local function setLines(t) for _, l in ipairs(lines) do Tween(l, { BackgroundTransparency = t }) end end
-
-		local resizing, hovering, rStart, startAbs = false, false, nil, nil
-		trackConn(window, hot.MouseEnter:Connect(function() hovering = true setLines(0.05) end))
-		trackConn(window, hot.MouseLeave:Connect(function() hovering = false if not resizing then setLines(0.55) end end))
-		trackConn(window, hot.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-				resizing = true rStart = input.Position startAbs = window._main.AbsoluteSize
-			end
-		end))
-		trackConn(window, UserInputService.InputChanged:Connect(function(input)
-			if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-				local vp = Camera and Camera.ViewportSize or Vector2.new(1280, 720)
-				local newW = math.clamp(startAbs.X + (input.Position.X - rStart.X), MIN_W, vp.X - 20)
-				local newH = math.clamp(startAbs.Y + (input.Position.Y - rStart.Y), MIN_H, vp.Y - 20)
-				local oldAbs = window._main.AbsoluteSize
-				window._main.Size = UDim2.fromOffset(newW, newH)
-				window._size = window._main.Size
-				-- keep the top-left corner anchored while the centre-anchored frame grows
-				local p = window._main.Position
-				window._main.Position = UDim2.new(p.X.Scale, p.X.Offset + (newW - oldAbs.X) / 2, p.Y.Scale, p.Y.Offset + (newH - oldAbs.Y) / 2)
-			end
-		end))
-		trackConn(window, UserInputService.InputEnded:Connect(function(input)
-			if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) and resizing then
-				resizing = false
-				if not hovering then setLines(0.55) end
-			end
-		end))
-	end
 
 	-- Dragging (clamped)
 	local dragging, dragStart, startPos = false, nil, nil
@@ -1093,6 +1362,7 @@ function Nexus:CreateWindow(options)
 	function window:Notify(o) Nexus:Notify(o) end
 
 	function window:Destroy()
+		if Nexus._config.enabled then pcall(function() Nexus:SaveConfiguration() end) end
 		disconnectAll(self)
 		for _, t in ipairs(self._tabs) do pcall(function() t:Destroy() end) end
 		for i, w in ipairs(Nexus._windows) do if w == self then table.remove(Nexus._windows, i) break end end
@@ -1116,7 +1386,5 @@ function Nexus:Destroy()
 	for i = #Nexus._windows, 1, -1 do pcall(function() Nexus._windows[i]:Destroy() end) end
 	if NotifyHolder then pcall(function() NotifyHolder:Destroy() end) NotifyHolder = nil end
 end
-function Nexus:LoadConfiguration() end
-function Nexus:SaveConfiguration() end
 
 return Nexus
